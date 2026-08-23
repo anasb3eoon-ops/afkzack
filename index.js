@@ -21,33 +21,34 @@ const createDefaultAccount = (index = 1, preset = {}) => ({
     afkChannelId: preset.afkChannelId || process.env.AFK_CHANNEL_ID || "1496645738086531194",
     targetGuildId: preset.targetGuildId || process.env.TARGET_GUILD_ID || "1264561928034975775",
 
-    alertEnabled: false,
-    alertGuildIds: [],
-    disabledSendChannels: [],
-
     task1Channel: "1507460885583626351",
     task1Msg: "!ذكريات",
     task1Count: 10,
+    task1MessageGap: 5,
+    task1RepeatMin: 30,
+    task1RepeatMax: 35,
 
     task2Channel: "1497214787493433545",
     task2Msg: "بخشيش",
+    task2RepeatMin: 30,
+    task2RepeatMax: 32,
 
     task3Channel: "1505231947574546472",
     task3Msgs: ["!عمل", "!جريمة", "!رصيد"],
+    task3RepeatMin: 50,
+    task3RepeatMax: 52,
 
     task4Channel: "1505231949629882508",
     task4Msg: "!هجوم <@998040612047691827>",
+    task4TargetId: "998040612047691827",
+    task4TargetIds: ["998040612047691827"],
+    task4TargetMode: "fixed",
+    task4RepeatMin: 30,
+    task4RepeatMax: 32,
 
     planBChannel: "1503150255594799205",
     planBMsg: "يا شباب جمعو نقاط",
-
-    customRooms: [],
-
-    customTaskEnabled: false,
-    customTaskChannels: ["1503150255594799205"],
-    customTaskChannel: "1503150255594799205",
-    customTaskMsg: "مرحبا شباب",
-    customTaskIntervalMs: 6000
+    planBRepeat: 2.5
 });
 
 let config = {
@@ -81,7 +82,28 @@ const syncActiveConfig = () => {
         const normalized = { ...account };
         normalized.isPrimary = account.id === config.primaryAccountId || index === 0;
         normalized.color = normalized.color || accountColors[index % accountColors.length];
+        normalized.task1MessageGap ??= normalized.task1MessageGapMin ?? 5;
+        normalized.task1RepeatMin ??= 30;
+        normalized.task1RepeatMax ??= 35;
+        normalized.task2RepeatMin ??= 30;
+        normalized.task2RepeatMax ??= 32;
+        normalized.task3RepeatMin ??= 50;
+        normalized.task3RepeatMax ??= 52;
+        normalized.task4RepeatMin ??= 30;
+        normalized.task4RepeatMax ??= 32;
+        if (!/^\d{15,25}$/.test(String(normalized.task4TargetId || ''))) {
+            normalized.task4TargetId = "998040612047691827";
+        }
+        normalized.task4TargetIds = Array.isArray(normalized.task4TargetIds)
+            ? normalized.task4TargetIds.filter(id => /^\d{15,25}$/.test(String(id)))
+            : [];
+        if (!normalized.task4TargetIds.includes(normalized.task4TargetId)) {
+            normalized.task4TargetIds.unshift(normalized.task4TargetId);
+        }
+        normalized.task4TargetMode = normalized.task4TargetMode === 'random' ? 'random' : 'fixed';
+        normalized.planBRepeat ??= normalized.planBRepeatMin ?? 2.5;
         if (normalized.isPrimary) config.primaryAccountId = normalized.id;
+        if (account.id === active.id) Object.assign(active, normalized);
         return normalized;
     });
     Object.keys(active).forEach(key => {
@@ -129,13 +151,19 @@ const saveConfig = () => {
     }
 };
 
+const timingKeys = [
+    'task1MessageGap', 'task1RepeatMin', 'task1RepeatMax',
+    'task2RepeatMin', 'task2RepeatMax', 'task3RepeatMin', 'task3RepeatMax',
+    'task4RepeatMin', 'task4RepeatMax', 'planBRepeat'
+];
+
 let isChatActive = true;
 let isVoiceActive = true;
 let isBotRunning = true;
 let isTaskRunning = true;
+const taskStates = { task1: false, task2: false, task3: false, task4: false };
 let planBInterval = null;
 let isPlanBRunning = false;
-let mainTaskLoop = null;
 let task3Index = 0;
 
 let stats = {
@@ -157,6 +185,7 @@ const syncState = () => {
         isVoiceActive,
         isPlanBRunning,
         isTaskRunning,
+        taskStates,
         stats,
         config: profileView
     });
@@ -190,10 +219,22 @@ global.botEmitter.on('control', (action) => {
     if (action === 'bot') {
         isBotRunning = !isBotRunning;
         if (!isBotRunning) {
+            isChatActive = false;
+            isVoiceActive = false;
+            isTaskRunning = false;
+            Object.keys(taskTimers).forEach(taskName => {
+                if (taskTimers[taskName]) clearTimeout(taskTimers[taskName]);
+                taskTimers[taskName] = null;
+            });
+            stopPlanBLoop();
             const conn = getVoiceConnection(config.guildId);
             if (conn) conn.destroy();
         } else {
+            isChatActive = true;
+            isVoiceActive = true;
+            isTaskRunning = true;
             connectToVoice();
+            startTaskLoops();
         }
     } else if (action === 'voice') {
         isVoiceActive = !isVoiceActive;
@@ -218,6 +259,28 @@ global.botEmitter.on('control', (action) => {
     syncState();
 });
 
+global.botEmitter.on('toggleTask', (taskName) => {
+    if (!(taskName in taskStates)) return;
+
+    taskStates[taskName] = !taskStates[taskName];
+    const taskFn = taskFunctions[taskName];
+    if (taskStates[taskName] && taskFn && isBotRunning && isChatActive && isTaskRunning) {
+        runTaskInOrder(taskName, taskFn);
+        scheduleSingleTask(taskName, taskFn);
+    } else if (!taskStates[taskName] && taskTimers[taskName]) {
+        clearTimeout(taskTimers[taskName]);
+        taskTimers[taskName] = null;
+    }
+    syncState();
+});
+
+global.botEmitter.on('togglePlanB', () => {
+    isPlanBRunning = !isPlanBRunning;
+    if (isPlanBRunning) startPlanBLoop();
+    else stopPlanBLoop();
+    syncState();
+});
+
 global.botEmitter.on('updateConfig', (newCfg) => {
     if (newCfg.afkChannelId) config.afkChannelId = newCfg.afkChannelId;
     if (newCfg.targetGuildId) config.targetGuildId = newCfg.targetGuildId;
@@ -227,6 +290,7 @@ global.botEmitter.on('updateConfig', (newCfg) => {
 
 global.botEmitter.on('updateTasksConfig', (newCfg) => {
     const active = getActiveAccount();
+    let timingChanged = false;
     if (newCfg.token) active.token = newCfg.token;
     if (newCfg.guildId) active.guildId = newCfg.guildId;
     if (newCfg.afkChannelId) active.afkChannelId = newCfg.afkChannelId;
@@ -234,54 +298,50 @@ global.botEmitter.on('updateTasksConfig', (newCfg) => {
     if (newCfg.task1Channel) active.task1Channel = newCfg.task1Channel;
     if (newCfg.task1Msg) active.task1Msg = newCfg.task1Msg;
     if (newCfg.task1Count) active.task1Count = parseInt(newCfg.task1Count) || 10;
+    timingKeys.forEach(key => {
+        if (newCfg[key] !== undefined && Number.isFinite(Number(newCfg[key]))) {
+            active[key] = Math.max(0.1, Number(newCfg[key]));
+            timingChanged = true;
+        }
+    });
     if (newCfg.task2Channel) active.task2Channel = newCfg.task2Channel;
     if (newCfg.task2Msg) active.task2Msg = newCfg.task2Msg;
     if (newCfg.task3Channel) active.task3Channel = newCfg.task3Channel;
     if (newCfg.task3Msgs) active.task3Msgs = Array.isArray(newCfg.task3Msgs) ? newCfg.task3Msgs : String(newCfg.task3Msgs).split(',').map(item => item.trim());
     if (newCfg.task4Channel) active.task4Channel = newCfg.task4Channel;
     if (newCfg.task4Msg) active.task4Msg = newCfg.task4Msg;
+    const normalizeTargetId = value => String(value || '').trim().replace(/^<@!?/, '').replace(/>$/, '');
+    const targetId = normalizeTargetId(newCfg.task4TargetId);
+    if (/^\d{15,25}$/.test(targetId)) {
+        active.task4TargetId = targetId;
+    }
+    if (newCfg.task4TargetIds !== undefined) {
+        const targetIds = Array.isArray(newCfg.task4TargetIds)
+            ? newCfg.task4TargetIds
+            : String(newCfg.task4TargetIds).split(',');
+        active.task4TargetIds = [...new Set(targetIds.map(normalizeTargetId).filter(id => /^\d{15,25}$/.test(id)))];
+    }
+    if (!active.task4TargetIds.includes(active.task4TargetId)) {
+        active.task4TargetIds.unshift(active.task4TargetId);
+    }
+    if (newCfg.task4TargetMode === 'random' || newCfg.task4TargetMode === 'fixed') {
+        active.task4TargetMode = newCfg.task4TargetMode;
+    }
     if (newCfg.planBChannel) active.planBChannel = newCfg.planBChannel;
     if (newCfg.planBMsg) active.planBMsg = newCfg.planBMsg;
     if (newCfg.name) active.name = newCfg.name;
     Object.assign(config, active);
     saveConfig();
-    syncState();
-});
-
-global.botEmitter.on('updatePresence', (gameName) => {
-    if (gameName && client.user) {
-        client.user.setPresence({
-            activities: [{ name: gameName, type: 'PLAYING' }],
-            status: 'online'
-        });
+    if (timingChanged) {
+        if (isBotRunning && isChatActive && isTaskRunning) {
+            scheduleSingleTask('task1', runTask1Burst);
+            scheduleSingleTask('task2', runTask2);
+            scheduleSingleTask('task3', runTask3);
+            scheduleSingleTask('task4', runTask4);
+        }
+        if (isPlanBRunning) startPlanBLoop();
     }
-});
-
-global.botEmitter.on('addCustomRoom', (roomData) => {
-    const active = getActiveAccount();
-    const newRoom = {
-        channelId: roomData.channelId,
-        message: roomData.message,
-        interval: roomData.interval,
-        active: true
-    };
-    active.customRooms.push(newRoom);
-    Object.assign(config, active);
-    saveConfig();
     syncState();
-    console.log(`✅ تمت إضافة روم مخصص جديد في القناة: ${roomData.channelId}`);
-});
-
-global.botEmitter.on('deleteCustomRoom', (roomIdx) => {
-    const active = getActiveAccount();
-    if (active.customRooms[roomIdx]) {
-        active.customRooms.splice(roomIdx, 1);
-        delete customRoomIntervals[roomIdx];
-        Object.assign(config, active);
-        saveConfig();
-        syncState();
-        console.log(`✅ تم حذف الروم المخصص #${roomIdx + 1}`);
-    }
 });
 
 global.botEmitter.on('deleteMessages', async ({ channelId, count = 50 }) => {
@@ -319,17 +379,6 @@ global.botEmitter.on('deleteMessages', async ({ channelId, count = 50 }) => {
     }
 });
 
-global.botEmitter.on('toggleCustomRoom', (roomIdx) => {
-    const active = getActiveAccount();
-    if (active.customRooms[roomIdx]) {
-        active.customRooms[roomIdx].active = !active.customRooms[roomIdx].active;
-        Object.assign(config, active);
-        saveConfig();
-        syncState();
-        console.log(`✅ تم ${active.customRooms[roomIdx].active ? 'تشغيل' : 'إيقاف'} الروم المخصص #${roomIdx + 1}`);
-    }
-});
-
 const replyChatStatus = () => {
     return [
         `🔹 البوت: ${isBotRunning ? 'مفعّل' : 'موقف'}`,
@@ -342,6 +391,8 @@ const replyChatStatus = () => {
 
 const MESSAGE_THROTTLE_MS = 2000;
 let lastMessageSentAt = 0;
+let messageQueue = Promise.resolve();
+let taskQueue = Promise.resolve();
 
 const waitForMessageThrottle = async () => {
     const now = Date.now();
@@ -358,110 +409,97 @@ const waitForMessageThrottle = async () => {
 
 const sendChannelMessage = async (channelId, messageText, label) => {
     if (!channelId || !messageText) return false;
-    try {
-        await waitForMessageThrottle();
+    const send = messageQueue.then(async () => {
+        try {
+            const messageGap = Math.max(3000, MESSAGE_THROTTLE_MS);
+            const elapsed = Date.now() - lastMessageSentAt;
+            if (elapsed < messageGap) {
+                await new Promise(resolve => setTimeout(resolve, messageGap - elapsed));
+            }
 
-        const channel = client.channels.cache.get(channelId);
-        const isTextChannel = channel && (
-            channel.type === 'GUILD_TEXT' ||
-            channel.type === 'DM' ||
-            channel.type === 'GUILD_NEWS' ||
-            typeof channel.send === 'function'
-        );
-        if (!isTextChannel) return false;
+            const channel = client.channels.cache.get(channelId);
+            const isTextChannel = channel && (
+                channel.type === 'GUILD_TEXT' ||
+                channel.type === 'DM' ||
+                channel.type === 'GUILD_NEWS' ||
+                typeof channel.send === 'function'
+            );
+            if (!isTextChannel) return false;
 
-        await channel.send(messageText);
-        stats.totalSent += 1;
-        stats.lastActiveTime = new Date().toLocaleString('ar-SA');
-        console.log(`✅ ${label}: ${channelId}`);
-        return true;
-    } catch (e) {
-        console.error(`❌ ${label}: ${channelId} - ${e.message}`);
-        return false;
-    }
+            await channel.send(messageText);
+            lastMessageSentAt = Date.now();
+            stats.totalSent += 1;
+            stats.lastActiveTime = new Date().toLocaleString('ar-SA');
+            console.log(`✅ ${label}: ${channelId}`);
+            return true;
+        } catch (e) {
+            console.error(`❌ ${label}: ${channelId} - ${e.message}`);
+            return false;
+        }
+    });
+    messageQueue = send.catch(() => false);
+    return send;
 };
 
-const randomBetween = (minMs, maxMs) => Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
-
-const scheduleSingleTask = (taskName, taskFn, baseMs, jitterMs) => {
-    const delay = baseMs + randomBetween(0, jitterMs);
-    const timerKey = `${taskName}Timer`;
-
-    if (taskName === 'task1') {
-        if (task1Timer) clearTimeout(task1Timer);
-        task1Timer = setTimeout(async () => {
-            if (!isBotRunning || !isChatActive || !isTaskRunning) {
-                scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-                return;
-            }
-            await taskFn();
-            scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-        }, delay);
-        return;
-    }
-
-    if (taskName === 'task2') {
-        if (task2Timer) clearTimeout(task2Timer);
-        task2Timer = setTimeout(async () => {
-            if (!isBotRunning || !isChatActive || !isTaskRunning) {
-                scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-                return;
-            }
-            await taskFn();
-            scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-        }, delay);
-        return;
-    }
-
-    if (taskName === 'task3') {
-        if (task3Timer) clearTimeout(task3Timer);
-        task3Timer = setTimeout(async () => {
-            if (!isBotRunning || !isChatActive || !isTaskRunning) {
-                scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-                return;
-            }
-            await taskFn();
-            scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-        }, delay);
-        return;
-    }
-
-    if (taskName === 'task4') {
-        if (task4Timer) clearTimeout(task4Timer);
-        task4Timer = setTimeout(async () => {
-            if (!isBotRunning || !isChatActive || !isTaskRunning) {
-                scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-                return;
-            }
-            await taskFn();
-            scheduleSingleTask(taskName, taskFn, baseMs, jitterMs);
-        }, delay);
-    }
+const randomBetween = (minMs, maxMs) => {
+    const min = Math.min(minMs, maxMs);
+    const max = Math.max(minMs, maxMs);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 
-let task1Timer = null;
-let task2Timer = null;
-let task3Timer = null;
-let task4Timer = null;
+const getTaskRepeatDelay = (taskName) => {
+    const min = Number(config[`${taskName}RepeatMin`]);
+    const max = Number(config[`${taskName}RepeatMax`]);
+    const fallback = taskName === 'task3' ? 50 : 30;
+    return randomBetween((Number.isFinite(min) ? min : fallback) * 60 * 1000,
+        (Number.isFinite(max) ? max : fallback) * 60 * 1000);
+};
+
+const scheduleSingleTask = (taskName, taskFn) => {
+    const delay = getTaskRepeatDelay(taskName);
+    if (taskTimers[taskName]) clearTimeout(taskTimers[taskName]);
+    taskTimers[taskName] = setTimeout(async () => {
+        if (isBotRunning && isChatActive && isTaskRunning && taskStates[taskName]) {
+            await runTaskInOrder(taskName, taskFn);
+        }
+        scheduleSingleTask(taskName, taskFn);
+    }, delay);
+};
+
+const taskTimers = { task1: null, task2: null, task3: null, task4: null };
+
+const runTaskInOrder = (taskName, taskFn) => {
+    const run = taskQueue.then(async () => {
+        if (isBotRunning && isChatActive && isTaskRunning && taskStates[taskName]) {
+            await taskFn();
+        }
+    });
+    taskQueue = run.catch(() => {});
+    return run;
+};
 
 const runTask1Burst = async () => {
     if (!config.task1Channel || !config.task1Msg) return;
-    for (let i = 0; i < 8; i++) {
-        if (!isBotRunning || !isChatActive || !isTaskRunning) return;
+    const count = Math.max(1, Number(config.task1Count) || 10);
+    for (let i = 0; i < count; i++) {
+        if (!isBotRunning || !isChatActive || !isTaskRunning || !taskStates.task1) return;
         await sendChannelMessage(config.task1Channel, config.task1Msg, 'مهمة 1');
         stats.task1CountLog += 1;
-        if (i < 7) await new Promise(resolve => setTimeout(resolve, 5000));
+        if (i < count - 1) {
+            const gap = Math.max(3, Number(config.task1MessageGap) || 5);
+            await new Promise(resolve => setTimeout(resolve, gap * 1000));
+        }
     }
 };
 
 const runTask2 = async () => {
-    if (!config.task2Channel || !config.task2Msg) return;
+    if (!taskStates.task2 || !config.task2Channel || !config.task2Msg) return;
     await sendChannelMessage(config.task2Channel, config.task2Msg, 'مهمة 2');
     stats.task2CountLog += 1;
 };
 
 const runTask3 = async () => {
-    if (!config.task3Channel || !Array.isArray(config.task3Msgs) || config.task3Msgs.length === 0) return;
+    if (!taskStates.task3 || !config.task3Channel || !Array.isArray(config.task3Msgs) || config.task3Msgs.length === 0) return;
     const msg = config.task3Msgs[task3Index % config.task3Msgs.length];
     await sendChannelMessage(config.task3Channel, msg, 'مهمة 3');
     stats.task3CountLog += 1;
@@ -469,39 +507,62 @@ const runTask3 = async () => {
 };
 
 const runTask4 = async () => {
-    if (!config.task4Channel || !config.task4Msg) return;
-    await sendChannelMessage(config.task4Channel, config.task4Msg, 'مهمة 4');
+    if (!taskStates.task4 || !config.task4Channel || !config.task4Msg) return;
+    const targets = Array.isArray(config.task4TargetIds) && config.task4TargetIds.length > 0
+        ? config.task4TargetIds
+        : [config.task4TargetId].filter(Boolean);
+    const targetId = config.task4TargetMode === 'random'
+        ? targets[Math.floor(Math.random() * targets.length)]
+        : config.task4TargetId || targets[0];
+    const targetMention = targetId ? `<@${targetId}>` : '';
+    const taskMessage = config.task4Msg.replace(/<@!?\d+>/g, targetMention) || `!هجوم ${targetMention}`;
+    await sendChannelMessage(config.task4Channel, taskMessage, 'مهمة 4');
     stats.task4CountLog += 1;
 };
 
+const taskFunctions = {
+    task1: runTask1Burst,
+    task2: runTask2,
+    task3: runTask3,
+    task4: runTask4
+};
+
+const stopPlanBLoop = () => {
+    if (planBInterval) clearTimeout(planBInterval);
+    planBInterval = null;
+};
+
 const startPlanBLoop = () => {
-    if (planBInterval) clearInterval(planBInterval);
+    stopPlanBLoop();
     if (!isPlanBRunning) return;
 
-    planBInterval = setInterval(async () => {
-        if (!isBotRunning || !isChatActive || !isPlanBRunning) return;
+    const sendPlanB = async () => {
+        if (!isPlanBRunning) return;
         await sendChannelMessage(config.planBChannel, config.planBMsg, 'خطة ب');
         stats.planBCountLog += 1;
-    }, 2500);
+        const repeat = Number(config.planBRepeat) || 2.5;
+        planBInterval = setTimeout(sendPlanB, repeat * 1000);
+    };
+
+    const repeat = Number(config.planBRepeat) || 2.5;
+    planBInterval = setTimeout(sendPlanB, repeat * 1000);
 };
 
 const startTaskLoops = () => {
-    if (task1Timer) clearTimeout(task1Timer);
-    if (task2Timer) clearTimeout(task2Timer);
-    if (task3Timer) clearTimeout(task3Timer);
-    if (task4Timer) clearTimeout(task4Timer);
+    Object.values(taskTimers).forEach(timer => {
+        if (timer) clearTimeout(timer);
+    });
 
     if (!isBotRunning || !isChatActive || !isTaskRunning) return;
 
-    void runTask1Burst();
-    void runTask2();
-    void runTask3();
-    void runTask4();
+    if (taskStates.task1) runTaskInOrder('task1', runTask1Burst);
+    if (taskStates.task2) runTaskInOrder('task2', runTask2);
+    if (taskStates.task3) runTaskInOrder('task3', runTask3);
+    if (taskStates.task4) runTaskInOrder('task4', runTask4);
 
-    scheduleSingleTask('task1', runTask1Burst, 30 * 60 * 1000, 5 * 60 * 1000);
-    scheduleSingleTask('task2', runTask2, 30 * 60 * 1000, 2 * 60 * 1000);
-    scheduleSingleTask('task3', runTask3, 50 * 60 * 1000, 2 * 60 * 1000);
-    scheduleSingleTask('task4', runTask4, 30 * 60 * 1000, 2 * 60 * 1000);
+    Object.entries(taskFunctions).forEach(([taskName, taskFn]) => {
+        if (taskStates[taskName]) scheduleSingleTask(taskName, taskFn);
+    });
 };
 
 global.botEmitter.on('addAccount', (accountData) => {
@@ -557,8 +618,6 @@ client.on('ready', () => {
     syncState();
     setInterval(syncState, 5000);
     
-    // بدء تشغيل الـ Custom Rooms
-    startCustomRooms();
 });
 
 client.on('messageCreate', async (message) => {
@@ -682,7 +741,7 @@ client.on('messageCreate', async (message) => {
             return;
         }
         isPlanBRunning = false;
-        if (planBInterval) clearInterval(planBInterval);
+        stopPlanBLoop();
         syncState();
         await isReply('🛑 تم إيقاف خطة ب');
         return;
@@ -728,53 +787,6 @@ client.on('messageCreate', async (message) => {
         await isReply('الأوامر المتاحة:\n!status\n!stop\n!start\n!voice off\n!voice on\n!chat off\n!chat on\n!tasks off\n!tasks on\n!planb off\n!planb on\n!delete 50 123456789012345678');
     }
 });
-
-const customRoomIntervals = {};
-
-const startCustomRooms = () => {
-    // إنشء interval لكل روم مخصص
-    const checkCustomRooms = async () => {
-        if (!isBotRunning || !isChatActive) return;
-        
-        for (let i = 0; i < config.customRooms.length; i++) {
-            const room = config.customRooms[i];
-            if (!room || !room.active) continue;
-            
-            if (!customRoomIntervals[i]) {
-                customRoomIntervals[i] = 0;
-            }
-            
-            customRoomIntervals[i]++;
-            
-            // إذا وصلنا للوقت المحدد، أرسل الرسالة
-            if (customRoomIntervals[i] >= room.interval) {
-                try {
-                    const channel = client.channels.cache.get(room.channelId);
-                    const isTextChannel = channel && (
-                        channel.type === 'GUILD_TEXT' ||
-                        channel.type === 'DM' ||
-                        channel.type === 'GUILD_NEWS' ||
-                        typeof channel.send === 'function'
-                    );
-                    if (channel && isTextChannel) {
-                        await channel.send(room.message);
-                        stats.totalSent++;
-                        stats.lastActiveTime = new Date().toLocaleString('ar-SA');
-                        console.log(`✅ تم إرسال رسالة من روم مخصص: ${room.channelId}`);
-                    }
-                } catch (e) {
-                    console.error(`❌ خطأ إرسال رسالة في روم مخصص: ${room.channelId}`, e.message);
-                }
-                
-                // إعادة تعيين العداد
-                customRoomIntervals[i] = 0;
-            }
-        }
-    };
-    
-    // تحقق كل ثانية
-    setInterval(checkCustomRooms, 1000);
-};
 
 client.on('voiceStateUpdate', (oldState, newState) => {
     if (oldState.id !== client.user.id) return;

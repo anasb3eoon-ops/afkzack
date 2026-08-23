@@ -24,7 +24,23 @@ const updateBotState = (data) => {
 app.get('/', (req, res) => {
     const c = botState.config || {};
     const s = botState.stats || {};
-
+    const t = botState.taskStates || {};
+    const taskActive = taskName => botState.isRunning && botState.isChatActive && botState.isTaskRunning && t[taskName];
+    const planBActive = botState.isPlanBRunning;
+    const defaultTargetId = '998040612047691827';
+    const targetIds = Array.from(new Set([
+        ...(Array.isArray(c.task4TargetIds) ? c.task4TargetIds : []),
+        c.task4TargetId || defaultTargetId
+    ].filter(id => /^\d{15,25}$/.test(String(id)))));
+    const primaryTargetId = targetIds.includes(c.task4TargetId) ? c.task4TargetId : targetIds[0] || defaultTargetId;
+    const targetRows = targetIds.map(id =>
+        '<div class="target-chip ' + (id === primaryTargetId ? 'is-primary' : '') + '" data-target-id="' + id + '">' +
+            '<span class="target-id">' + id + '</span>' +
+            '<span class="primary-label">' + (id === primaryTargetId ? 'أساسي' : '') + '</span>' +
+            '<button type="button" data-target-action="primary">' + (id === primaryTargetId ? 'الأساسي' : 'جعله أساسيًا') + '</button>' +
+            '<button type="button" data-target-action="remove">حذف</button>' +
+        '</div>'
+    ).join('');
     res.send(`
         <!DOCTYPE html>
         <html lang="ar" dir="rtl">
@@ -39,11 +55,6 @@ app.get('/', (req, res) => {
                     to { opacity: 1; }
                 }
 
-                @keyframes neonGlow {
-                    0%, 100% { color: #a89f9e; }
-                    50% { color: #c9bfbe; }
-                }
-
                 @keyframes slideInFade {
                     from { 
                         opacity: 0; 
@@ -55,14 +66,21 @@ app.get('/', (req, res) => {
                     }
                 }
 
+                @keyframes goldPulse {
+                    0%, 100% { box-shadow: 0 0 4px rgba(214, 170, 72, 0.2); }
+                    50% { box-shadow: 0 0 12px rgba(214, 170, 72, 0.55); }
+                }
+
                 :root {
-                    --dark-black: #0a0a0a;
-                    --dark-brown: #1a1410;
-                    --gray-dark: #2a2620;
-                    --gray-neon: #787776;
-                    --gray-light: #a89f9e;
-                    --text-main: #e8e6e4;
-                    --text-sub: #9a9390;
+                    --black: #08090a;
+                    --surface: #111315;
+                    --surface-raised: #181b1e;
+                    --line: #2b3035;
+                    --line-strong: #454b52;
+                    --gray: #a8afb7;
+                    --gray-light: #e5e7eb;
+                    --text-main: #f1f3f5;
+                    --text-sub: #858d96;
                 }
 
                 * { 
@@ -73,12 +91,14 @@ app.get('/', (req, res) => {
                 }
 
                 body {
-                    --account-accent: ${c.color || '#a89f9e'};
-                    --account-accent-soft: rgba(168, 159, 158, 0.18);
-                    background: linear-gradient(135deg, #0a0a0a 0%, #1a1410 50%, #0d0a08 100%);
+                    --account-accent: #a8afb7;
+                    --account-accent-soft: rgba(168, 175, 183, 0.14);
+                    background-color: var(--black);
+                    background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+                    background-size: 32px 32px;
                     color: var(--text-main);
                     min-height: 100vh;
-                    padding: 40px 15px;
+                    padding: 28px 15px 50px;
                     overflow-x: hidden;
                     position: relative;
                 }
@@ -91,31 +111,35 @@ app.get('/', (req, res) => {
                 }
 
                 header {
-                    text-align: center;
-                    margin-bottom: 50px;
+                    text-align: right;
+                    margin-bottom: 30px;
+                    padding: 24px 28px;
+                    border: 1px solid var(--line);
+                    border-top: 3px solid var(--gray);
+                    background: rgba(17, 19, 21, 0.94);
+                    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
                 }
 
                 header h1 {
-                    font-size: 3rem;
+                    font-size: 2.25rem;
                     font-weight: 900;
                     font-family: 'Orbitron', monospace;
-                    letter-spacing: 3px;
-                    animation: neonGlow 4s ease-in-out infinite;
-                    color: var(--account-accent);
-                    margin-bottom: 15px;
+                    letter-spacing: 1px;
+                    color: var(--gray-light);
+                    margin-bottom: 8px;
                 }
 
                 header p {
-                    color: #9a9390;
+                    color: var(--text-sub);
                     font-size: 0.95rem;
-                    letter-spacing: 1px;
+                    letter-spacing: 0;
                 }
 
                 .status-line {
                     display: flex;
-                    justify-content: center;
+                    justify-content: flex-start;
                     gap: 15px;
-                    margin-top: 25px;
+                    margin-top: 20px;
                     flex-wrap: wrap;
                 }
 
@@ -123,17 +147,17 @@ app.get('/', (req, res) => {
                     display: flex;
                     align-items: center;
                     gap: 8px;
-                    padding: 10px 18px;
-                    border: 1.5px solid rgba(120, 119, 118, 0.4);
-                    border-radius: 25px;
-                    background: rgba(42, 38, 32, 0.6);
+                    padding: 9px 14px;
+                    border: 1px solid var(--line);
+                    border-radius: 4px;
+                    background: var(--surface-raised);
                     font-weight: 600;
                     font-size: 0.9rem;
                     transition: all 0.4s ease;
                 }
 
                 .status-indicator:hover {
-                    border-color: rgba(120, 119, 118, 0.7);
+                    border-color: var(--line-strong);
                 }
 
                 .status-dot {
@@ -147,21 +171,300 @@ app.get('/', (req, res) => {
 
                 .grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-                    gap: 25px;
+                    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                    gap: 18px;
                     margin-bottom: 30px;
                 }
 
+                .dashboard-nav {
+                    display: flex;
+                    gap: 8px;
+                    padding: 8px;
+                    margin-bottom: 24px;
+                    border: 1px solid var(--line);
+                    background: rgba(17, 19, 21, 0.94);
+                    overflow-x: auto;
+                }
+
+                .dashboard-nav button {
+                    flex: 1;
+                    min-width: 150px;
+                    padding: 12px 16px;
+                    border: 1px solid transparent;
+                    border-radius: 3px;
+                    background: transparent;
+                    color: var(--text-sub);
+                    cursor: pointer;
+                    font: inherit;
+                    font-weight: 700;
+                    white-space: nowrap;
+                    transition: 0.2s ease;
+                }
+
+                .dashboard-nav button:hover,
+                .dashboard-nav button.active {
+                    color: var(--text-main);
+                    background: var(--surface-raised);
+                    border-color: var(--line-strong);
+                }
+
+                .dashboard-panel {
+                    display: none;
+                    animation: slideInFade 0.25s ease-out both;
+                }
+
+                .dashboard-panel.active {
+                    display: grid;
+                }
+
+                .task-manager,
+                .timing-manager {
+                    min-height: 100%;
+                }
+
+                .task-list {
+                    display: grid;
+                    gap: 10px;
+                }
+
+                .task-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 14px;
+                    padding: 14px;
+                    border: 1px solid var(--line);
+                    border-right: 3px solid var(--line-strong);
+                    background: #0d0f11;
+                    transition: 0.2s ease;
+                }
+
+                .task-row:hover {
+                    background: var(--surface-raised);
+                    border-right-color: var(--gray);
+                    transform: translateX(-2px);
+                }
+
+                .task-name {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    min-width: 0;
+                    color: var(--gray-light);
+                    font-weight: 700;
+                }
+
+                .task-number {
+                    display: grid;
+                    place-items: center;
+                    width: 30px;
+                    height: 30px;
+                    flex: 0 0 30px;
+                    border: 1px solid var(--line-strong);
+                    color: var(--gray);
+                    font-size: 0.8rem;
+                }
+
+                .task-state {
+                    margin-right: auto;
+                    color: var(--text-sub);
+                    font-size: 0.78rem;
+                    white-space: nowrap;
+                }
+
+                .task-row .btn {
+                    flex: 0 0 auto;
+                    min-width: 105px;
+                    padding: 8px 12px;
+                    border-radius: 3px;
+                }
+
+                .timing-manager form {
+                    gap: 12px;
+                }
+
+                .planb-card {
+                    border: 1px solid #8f702f;
+                    border-top: 2px solid #d6aa48;
+                    animation: slideInFade 0.6s ease-out both, goldPulse 2.8s ease-in-out infinite;
+                }
+
+                .planb-card h3 {
+                    color: #e0b957;
+                    border-bottom-color: rgba(214, 170, 72, 0.35);
+                }
+
+                .planb-card .task-row {
+                    border-color: rgba(214, 170, 72, 0.35);
+                    border-right-color: #d6aa48;
+                }
+
+                .timing-group {
+                    padding: 13px;
+                    border: 1px solid var(--line);
+                    background: #0d0f11;
+                }
+
+                .timing-group label {
+                    display: block;
+                    margin-bottom: 9px;
+                    color: var(--gray-light);
+                }
+
+                .timing-fields {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 8px;
+                }
+
+                .timing-fields input {
+                    min-width: 0;
+                }
+
+                .target-list {
+                    display: grid;
+                    gap: 6px;
+                    margin-top: 14px;
+                    padding: 8px;
+                    min-height: 52px;
+                    border: 1px solid #262b30;
+                    background: #090b0d;
+                }
+
+                .target-title {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    margin-bottom: 16px;
+                    padding-bottom: 14px;
+                    border-bottom: 1px solid #30363d;
+                }
+
+                .target-title h3 {
+                    margin-bottom: 4px;
+                    border-bottom: 0;
+                    padding-bottom: 0;
+                    color: #e0b957;
+                }
+
+                .target-title p {
+                    color: var(--text-sub);
+                    font-size: 0.78rem;
+                }
+
+                .target-count {
+                    padding: 6px 10px;
+                    border: 1px solid #8f702f;
+                    color: #e0b957;
+                    font-size: 0.75rem;
+                    white-space: nowrap;
+                }
+
+                .target-add {
+                    display: flex;
+                    align-items: stretch;
+                    gap: 8px;
+                }
+
+                .target-add input {
+                    flex: 1;
+                }
+
+                .target-add .btn {
+                    flex: 0 0 auto;
+                    min-width: 125px;
+                }
+
+                .target-mode {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    margin-top: 14px;
+                    padding: 12px;
+                    border: 1px solid var(--line);
+                    background: #0d0f11;
+                }
+
+                .target-mode select {
+                    width: min(58%, 260px);
+                }
+
+                .target-save {
+                    width: 100%;
+                    margin-top: 14px;
+                }
+
+                .target-chip {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    padding: 10px 12px;
+                    border: 1px solid #30363d;
+                    border-right: 3px solid #555d66;
+                    background: #15191d;
+                    color: var(--gray-light);
+                    font-size: 0.85rem;
+                    transition: 0.2s ease;
+                }
+
+                .target-chip:hover {
+                    background: #1b2025;
+                    border-right-color: #9aa3ad;
+                }
+
+                .target-chip.is-primary {
+                    border-color: #8f702f;
+                    border-right-color: #e0b957;
+                    background: rgba(184, 138, 44, 0.16);
+                }
+
+                .target-manager.random-mode .target-chip.is-primary {
+                    border-color: var(--line-strong);
+                    background: var(--surface-raised);
+                }
+
+                .target-manager.random-mode .primary-label {
+                    color: var(--text-sub);
+                }
+
+                .target-chip .target-id {
+                    margin-right: auto;
+                }
+
+                .target-chip .primary-label {
+                    color: #e0b957;
+                    font-size: 0.75rem;
+                }
+
+                .target-chip button {
+                    border: 1px solid var(--line-strong);
+                    background: #0e1114;
+                    color: var(--gray);
+                    cursor: pointer;
+                    padding: 5px 9px;
+                    font: inherit;
+                    font-size: 0.75rem;
+                    transition: 0.2s ease;
+                }
+
+                .target-chip button:hover {
+                    color: var(--gray-light);
+                    border-color: var(--gray);
+                }
+
+
                 .card {
-                    background: linear-gradient(135deg, rgba(26, 20, 16, 0.95) 0%, rgba(32, 26, 20, 0.95) 100%);
-                    border: 1.5px solid rgba(120, 119, 118, 0.3);
-                    border-radius: 12px;
-                    padding: 25px;
-                    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+                    background: rgba(17, 19, 21, 0.96);
+                    border: 1px solid var(--line);
+                    border-radius: 5px;
+                    padding: 22px;
+                    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
                     animation: slideInFade 0.6s ease-out both;
                     position: relative;
                     transition: all 0.3s ease;
-                    border-left: 4px solid var(--account-accent);
+                    border-top: 2px solid var(--account-accent);
                 }
 
                 .card:nth-child(1) { animation-delay: 0.05s; }
@@ -170,20 +473,19 @@ app.get('/', (req, res) => {
                 .card:nth-child(4) { animation-delay: 0.2s; }
 
                 .card:hover {
-                    border-color: rgba(120, 119, 118, 0.6);
-                    box-shadow: 0 6px 25px rgba(120, 119, 118, 0.15);
-                    transform: translateY(-2px);
+                    border-color: var(--line-strong);
+                    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
                 }
 
                 .card h3 {
                     font-size: 1.3rem;
                     margin-bottom: 20px;
-                    border-bottom: 1.5px solid rgba(120, 119, 118, 0.3);
-                    padding-bottom: 12px;
-                    color: #b8aeac;
+                    border-bottom: 1px solid var(--line);
+                    padding-bottom: 14px;
+                    color: var(--gray-light);
                     display: flex;
                     align-items: center;
-                    gap: 10px;
+                    gap: 8px;
                     font-weight: 700;
                 }
 
@@ -213,14 +515,14 @@ app.get('/', (req, res) => {
                     display: flex;
                     justify-content: space-between;
                     padding: 12px 0;
-                    border-bottom: 1px solid rgba(120, 119, 118, 0.15);
+                    border-bottom: 1px solid var(--line);
                     font-size: 0.95rem;
                     transition: all 0.2s ease;
-                    color: #b8aeac;
+                    color: var(--gray);
                 }
 
                 .stat-item:hover {
-                    background: rgba(120, 119, 118, 0.04);
+                    background: rgba(255, 255, 255, 0.035);
                     padding-left: 5px;
                 }
 
@@ -259,43 +561,43 @@ app.get('/', (req, res) => {
                 }
 
                 .btn-primary {
-                    background: linear-gradient(135deg, var(--account-accent) 0%, #4a4a48 100%);
-                    border-color: rgba(120, 119, 118, 0.5);
+                    background: #30353a;
+                    border-color: var(--line-strong);
                 }
 
                 .btn-primary:hover {
-                    box-shadow: 0 0 10px rgba(120, 119, 118, 0.2);
-                    border-color: rgba(120, 119, 118, 0.7);
+                    box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+                    border-color: var(--gray);
                 }
 
                 .btn-success {
-                    background: linear-gradient(135deg, var(--account-accent) 0%, #5a7a48 100%);
-                    border-color: rgba(122, 155, 90, 0.5);
+                    background: #3d4349;
+                    border-color: #626a72;
                 }
 
                 .btn-success:hover {
-                    box-shadow: 0 0 10px rgba(122, 155, 90, 0.2);
-                    border-color: rgba(122, 155, 90, 0.7);
+                    box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+                    border-color: var(--gray-light);
                 }
 
                 .btn-danger {
-                    background: linear-gradient(135deg, #5a3a38 0%, #7a4a48 100%);
-                    border-color: rgba(139, 90, 90, 0.5);
+                    background: #24282c;
+                    border-color: #596068;
                 }
 
                 .btn-danger:hover {
-                    box-shadow: 0 0 10px rgba(139, 90, 90, 0.2);
-                    border-color: rgba(139, 90, 90, 0.7);
+                    box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+                    border-color: var(--gray-light);
                 }
 
                 .btn-warning {
-                    background: linear-gradient(135deg, var(--account-accent) 0%, #7a5a48 100%);
-                    border-color: rgba(140, 100, 60, 0.5);
+                    background: #4b5158;
+                    border-color: #737b84;
                 }
 
                 .btn-warning:hover {
-                    box-shadow: 0 0 10px rgba(140, 100, 60, 0.2);
-                    border-color: rgba(140, 100, 60, 0.7);
+                    box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
+                    border-color: var(--gray-light);
                 }
 
                 form {
@@ -312,16 +614,17 @@ app.get('/', (req, res) => {
 
                 label {
                     font-size: 0.85rem;
-                    color: #a89f9e;
+                    color: var(--gray);
                     font-weight: 600;
                     letter-spacing: 0.5px;
                 }
 
                 input[type="text"],
-                input[type="number"] {
+                input[type="number"],
+                select {
                     width: 100%;
-                    background: rgba(20, 16, 12, 0.8);
-                    border: 1.5px solid rgba(120, 119, 118, 0.3);
+                    background: #0d0f11;
+                    border: 1px solid var(--line);
                     padding: 11px 14px;
                     border-radius: 8px;
                     color: #e8e6e4;
@@ -331,13 +634,17 @@ app.get('/', (req, res) => {
                 }
 
                 input:focus {
-                    border-color: rgba(120, 119, 118, 0.6);
-                    box-shadow: 0 0 8px rgba(120, 119, 118, 0.15);
-                    background: rgba(20, 16, 12, 0.95);
+                    border-color: var(--gray);
+                    box-shadow: 0 0 8px rgba(255, 255, 255, 0.08);
+                    background: #121518;
                 }
 
                 input::placeholder {
                     color: #5a5350;
+                }
+
+                select {
+                    appearance: none;
                 }
 
                 form button {
@@ -352,16 +659,16 @@ app.get('/', (req, res) => {
                 }
 
                 .accordion-item {
-                    background: rgba(42, 38, 32, 0.5);
-                    border: 1.5px solid rgba(120, 119, 118, 0.3);
+                    background: #0d0f11;
+                    border: 1px solid var(--line);
                     border-radius: 8px;
                     overflow: hidden;
                     transition: all 0.3s ease;
                 }
 
                 .accordion-item:hover {
-                    border-color: rgba(120, 119, 118, 0.5);
-                    background: rgba(42, 38, 32, 0.7);
+                    border-color: var(--line-strong);
+                    background: #15181b;
                 }
 
                 .accordion-header {
@@ -371,13 +678,13 @@ app.get('/', (req, res) => {
                     justify-content: space-between;
                     align-items: center;
                     font-weight: 600;
-                    color: #b8aeac;
+                    color: var(--gray-light);
                     transition: all 0.25s ease;
                     user-select: none;
                 }
 
                 .accordion-header:hover {
-                    color: #c9bfbe;
+                    color: var(--gray-light);
                 }
 
                 .accordion-icon {
@@ -413,40 +720,34 @@ app.get('/', (req, res) => {
                     .btn-group { flex-direction: column; }
                     .btn { min-width: 100%; }
                     body { padding: 20px 10px; }
+                    .dashboard-nav { margin-bottom: 18px; }
+                    .dashboard-nav button { min-width: 125px; padding: 10px 12px; }
+                    .task-row { align-items: flex-start; flex-wrap: wrap; }
+                    .task-state { margin-right: 0; }
+                    .task-row .btn { width: 100%; }
+                    .target-title,
+                    .target-add,
+                    .target-mode { align-items: stretch; flex-direction: column; }
+                    .target-add .btn,
+                    .target-mode select { width: 100%; }
                 }
             </style>
         </head>
-        <body style="--account-accent: ${c.color || '#a89f9e'};">
+        <body style="--account-accent: #a8afb7;">
             <div class="container">
                 <header>
                     <h1>◆ لوحة التحكم ◆</h1>
                     <p>نظام إدارة ديسكورد سيلفبوت المتقدم</p>
-                    <div class="status-line">
-                        <div class="status-indicator">
-                            <span class="status-dot ${botState.isRunning ? 'active' : 'inactive'}"></span>
-                            <span>البوت: ${botState.isRunning ? 'نشط ✓' : 'متوقف ✗'}</span>
-                        </div>
-                        <div class="status-indicator">
-                            <span class="status-dot ${botState.isVoiceActive ? 'active' : 'inactive'}"></span>
-                            <span>الصوت: ${botState.isVoiceActive ? 'متصل ✓' : 'مفصول ✗'}</span>
-                        </div>
-                        <div class="status-indicator">
-                            <span class="status-dot ${botState.isChatActive ? 'active' : 'inactive'}"></span>
-                            <span>الكتابة: ${botState.isChatActive ? 'مفعلة ✓' : 'معطلة ✗'}</span>
-                        </div>
-                        <div class="status-indicator">
-                            <span class="status-dot ${botState.isTaskRunning ? 'active' : 'inactive'}"></span>
-                            <span>المهام: ${botState.isTaskRunning ? 'مفعلة ✓' : 'متوقفة ✗'}</span>
-                        </div>
-                        <div class="status-indicator">
-                            <span class="status-dot ${botState.isPlanBRunning ? 'active' : 'inactive'}"></span>
-                            <span>الخطة ب: ${botState.isPlanBRunning ? 'مشغلة ✓' : 'متوقفة ✗'}</span>
-                        </div>
-                    </div>
                 </header>
 
+                <nav class="dashboard-nav" aria-label="أقسام لوحة التحكم">
+                    <button type="button" class="active" data-panel-target="overview">⚙️ النظرة العامة</button>
+                    <button type="button" data-panel-target="tasks">⚡ إدارة المهام</button>
+                    <button type="button" data-panel-target="channels">🎙️ القنوات والرسائل</button>
+                </nav>
+
                 <div style="display:flex; flex-direction:column; gap:25px;">
-                    <div class="grid">
+                    <div class="grid dashboard-panel active" data-panel="overview">
                             <!-- حالة النظام -->
                     <div class="card">
                         <h3>⚙️ حالة النظام</h3>
@@ -473,9 +774,6 @@ app.get('/', (req, res) => {
                         <div class="btn-group">
                             <a href="/api/toggle/bot" class="btn ${botState.isRunning ? 'btn-danger' : 'btn-success'}">${botState.isRunning ? '⏹ إيقاف كامل' : '▶ تشغيل كامل'}</a>
                             <a href="/api/toggle/voice" class="btn btn-primary">${botState.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت'}</a>
-                            <a href="/api/toggle/chat" class="btn btn-warning">${botState.isChatActive ? '🔇 إيقاف كتابة' : '📝 تشغيل كتابة'}</a>
-                            <a href="/api/toggle/tasks" class="btn btn-success">${botState.isTaskRunning ? '⏹ إيقاف المهام' : '▶ تشغيل المهام'}</a>
-                            <a href="/api/toggle/planb" class="btn btn-warning">${botState.isPlanBRunning ? '⏹ إيقاف خطة ب' : '▶ تشغيل خطة ب'}</a>
                         </div>
                     </div>
 
@@ -491,7 +789,115 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
-                <div class="grid">
+                <div class="grid dashboard-panel" data-panel="tasks">
+                    <div class="card task-manager">
+                        <h3>⚡ إدارة المهام</h3>
+                        <div class="task-list">
+                            <div class="task-row">
+                                <span class="task-name"><span class="task-number">01</span>ذكريات</span>
+                                <span class="task-state">${taskActive('task1') ? 'مفعلة' : 'متوقفة'}</span>
+                                <a href="/api/toggle-task/task1" class="btn ${taskActive('task1') ? 'btn-danger' : 'btn-success'}">${taskActive('task1') ? '⏹ إيقاف' : '▶ تشغيل'}</a>
+                            </div>
+                            <div class="task-row">
+                                <span class="task-name"><span class="task-number">02</span>بخشيش</span>
+                                <span class="task-state">${taskActive('task2') ? 'مفعلة' : 'متوقفة'}</span>
+                                <a href="/api/toggle-task/task2" class="btn ${taskActive('task2') ? 'btn-danger' : 'btn-success'}">${taskActive('task2') ? '⏹ إيقاف' : '▶ تشغيل'}</a>
+                            </div>
+                            <div class="task-row">
+                                <span class="task-name"><span class="task-number">03</span>عمل / جريمة</span>
+                                <span class="task-state">${taskActive('task3') ? 'مفعلة' : 'متوقفة'}</span>
+                                <a href="/api/toggle-task/task3" class="btn ${taskActive('task3') ? 'btn-danger' : 'btn-success'}">${taskActive('task3') ? '⏹ إيقاف' : '▶ تشغيل'}</a>
+                            </div>
+                            <div class="task-row">
+                                <span class="task-name"><span class="task-number">04</span>هجوم</span>
+                                <span class="task-state">${taskActive('task4') ? 'مفعلة' : 'متوقفة'}</span>
+                                <a href="/api/toggle-task/task4" class="btn ${taskActive('task4') ? 'btn-danger' : 'btn-success'}">${taskActive('task4') ? '⏹ إيقاف' : '▶ تشغيل'}</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card timing-manager">
+                        <h3>⏱️ توقيت المهام</h3>
+                        <form action="/api/update-tasks-config" method="POST">
+                            <div class="timing-group">
+                                <label>المهمة 1 - ذكريات: الفاصل بين الرسائل (ثواني)</label>
+                                <input type="number" name="task1MessageGap" value="${c.task1MessageGap || 5}" min="3" step="0.1" placeholder="مثال: 5">
+                            </div>
+                            <div class="form-group">
+                                <label>المهمة 1 - ذكريات: التكرار (دقائق)</label>
+                                <div class="timing-fields">
+                                    <input type="number" name="task1RepeatMin" value="${c.task1RepeatMin || 30}" min="0.1" step="0.1" placeholder="من">
+                                    <input type="number" name="task1RepeatMax" value="${c.task1RepeatMax || 35}" min="0.1" step="0.1" placeholder="إلى">
+                                </div>
+                            </div>
+                            <div class="timing-group">
+                                <label>المهمة 2 - بخشيش: التكرار (دقائق)</label>
+                                <div class="timing-fields">
+                                    <input type="number" name="task2RepeatMin" value="${c.task2RepeatMin || 30}" min="0.1" step="0.1" placeholder="من">
+                                    <input type="number" name="task2RepeatMax" value="${c.task2RepeatMax || 32}" min="0.1" step="0.1" placeholder="إلى">
+                                </div>
+                            </div>
+                            <div class="timing-group">
+                                <label>المهمة 3 - عمل/جريمة: التكرار (دقائق)</label>
+                                <div class="timing-fields">
+                                    <input type="number" name="task3RepeatMin" value="${c.task3RepeatMin || 50}" min="0.1" step="0.1" placeholder="من">
+                                    <input type="number" name="task3RepeatMax" value="${c.task3RepeatMax || 52}" min="0.1" step="0.1" placeholder="إلى">
+                                </div>
+                            </div>
+                            <div class="timing-group">
+                                <label>المهمة 4 - هجوم: التكرار (دقائق)</label>
+                                <div class="timing-fields">
+                                    <input type="number" name="task4RepeatMin" value="${c.task4RepeatMin || 30}" min="0.1" step="0.1" placeholder="من">
+                                    <input type="number" name="task4RepeatMax" value="${c.task4RepeatMax || 32}" min="0.1" step="0.1" placeholder="إلى">
+                                </div>
+                            </div>
+                            <div class="timing-group">
+                                <label>خطة ب - جمع النقاط: التكرار (ثواني)</label>
+                                <input type="number" name="planBRepeat" value="${c.planBRepeat || 2.5}" min="0.1" step="0.1" placeholder="مثال: 2.5">
+                            </div>
+                            <button type="submit" class="btn btn-primary">💾 حفظ التوقيت</button>
+                        </form>
+                    </div>
+
+                    <div class="card planb-card">
+                        <h3>✦ خطة ب - جمع النقاط</h3>
+                        <div class="task-row">
+                            <span class="task-name"><span class="task-number">ب</span>إرسال الرسائل السريعة</span>
+                            <span class="task-state">${planBActive ? 'مفعلة' : 'متوقفة'}</span>
+                            <a href="/api/toggle-planb" class="btn ${planBActive ? 'btn-danger' : 'btn-success'}">${planBActive ? '⏹ إيقاف' : '▶ تشغيل'}</a>
+                        </div>
+                    </div>
+
+                    <div class="card target-manager ${c.task4TargetMode === 'random' ? 'random-mode' : ''}">
+                        <div class="target-title">
+                            <div>
+                                <h3>🎯 أهداف الهجوم - المهمة 4</h3>
+                                <p>أضف الأعضاء وحدد عضوًا أساسيًا واحدًا</p>
+                            </div>
+                            <span class="target-count">${targetIds.length} أهداف</span>
+                        </div>
+                        <form id="targetsForm" action="/api/update-tasks-config" method="POST">
+                            <input type="hidden" name="task4TargetIds" id="task4TargetIds">
+                            <input type="hidden" name="task4TargetId" id="task4TargetId" value="${primaryTargetId}">
+                            <div class="target-add">
+                                <input type="text" id="newTargetId" placeholder="أدخل ID عضو جديد">
+                                <button type="button" class="btn btn-primary" onclick="addTarget()">➕ إضافة عضو</button>
+                            </div>
+                            <div class="target-list" id="targetList">${targetRows}</div>
+                            <div class="target-mode">
+                                <label for="task4TargetMode">طريقة الهجوم</label>
+                                <select id="task4TargetMode" name="task4TargetMode">
+                                    <option value="fixed" ${c.task4TargetMode !== 'random' ? 'selected' : ''}>الهدف الأساسي كل دورة</option>
+                                    <option value="random" ${c.task4TargetMode === 'random' ? 'selected' : ''}>هدف عشوائي من القائمة</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary target-save">💾 حفظ أهداف الهجوم</button>
+                        </form>
+                    </div>
+
+                </div>
+
+                <div class="grid dashboard-panel" data-panel="channels">
                     <!-- إدارة القنوات الصوتية -->
                     <div class="card">
                         <h3>🎙️ إدارة القنوات الصوتية</h3>
@@ -504,106 +910,6 @@ app.get('/', (req, res) => {
                         </form>
                     </div>
 
-                    <!-- المهام الثابتة المبرمجة -->
-                    <div class="card">
-                        <h3>⚡ المهام المبرمجة (ثابتة)</h3>
-                        <div class="accordion-container">
-                            <!-- المهمة 1 -->
-                            <div class="accordion-item">
-                                <div class="accordion-header">
-                                    <span>📌 المهمة 1 - ذكريات</span>
-                                    <span class="accordion-icon">▼</span>
-                                </div>
-                                <div class="accordion-content">
-                                    <div class="accordion-content-inner">
-                                        <div class="stat-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                            <strong style="color: #c9bfbe;">القناة:</strong>
-                                            <span style="color: #9fbf7f;">${c.task1Channel}</span>
-                                            <strong style="color: #c9bfbe; margin-top: 8px;">الرسالة:</strong>
-                                            <span style="color: #9fbf7f;">${c.task1Msg}</span>
-                                            <strong style="color: #c9bfbe; margin-top: 8px;">المرات:</strong>
-                                            <span style="color: #9fbf7f;">${c.task1Count}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- المهمة 2 -->
-                            <div class="accordion-item">
-                                <div class="accordion-header">
-                                    <span>📌 المهمة 2 - بخشيش</span>
-                                    <span class="accordion-icon">▼</span>
-                                </div>
-                                <div class="accordion-content">
-                                    <div class="accordion-content-inner">
-                                        <div class="stat-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                            <strong style="color: #c9bfbe;">القناة:</strong>
-                                            <span style="color: #9fbf7f;">${c.task2Channel}</span>
-                                            <strong style="color: #c9bfbe; margin-top: 8px;">الرسالة:</strong>
-                                            <span style="color: #9fbf7f;">${c.task2Msg}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- المهمة 3 -->
-                            <div class="accordion-item">
-                                <div class="accordion-header">
-                                    <span>📌 المهمة 3 - عمل/جريمة</span>
-                                    <span class="accordion-icon">▼</span>
-                                </div>
-                                <div class="accordion-content">
-                                    <div class="accordion-content-inner">
-                                        <div class="stat-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                            <strong style="color: #c9bfbe;">القناة:</strong>
-                                            <span style="color: #9fbf7f;">${c.task3Channel}</span>
-                                            <strong style="color: #c9bfbe; margin-top: 8px;">الرسائل:</strong>
-                                            <span style="color: #9fbf7f;">${Array.isArray(c.task3Msgs) ? c.task3Msgs.join(' | ') : ''}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- المهمة 4 -->
-                            <div class="accordion-item">
-                                <div class="accordion-header">
-                                    <span>📌 المهمة 4 - هجوم</span>
-                                    <span class="accordion-icon">▼</span>
-                                </div>
-                                <div class="accordion-content">
-                                    <div class="accordion-content-inner">
-                                        <div class="stat-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                            <strong style="color: #c9bfbe;">القناة:</strong>
-                                            <span style="color: #9fbf7f;">${c.task4Channel}</span>
-                                            <strong style="color: #c9bfbe; margin-top: 8px;">الرسالة:</strong>
-                                            <span style="color: #9fbf7f;">${c.task4Msg}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- خطة ب -->
-                            <div class="accordion-item">
-                                <div class="accordion-header">
-                                    <span>📌 خطة ب - رسائل مبرمجة</span>
-                                    <span class="accordion-icon">▼</span>
-                                </div>
-                                <div class="accordion-content">
-                                    <div class="accordion-content-inner">
-                                        <div class="stat-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                            <strong style="color: #c9bfbe;">القناة:</strong>
-                                            <span style="color: #9fbf7f;">${c.planBChannel}</span>
-                                            <strong style="color: #c9bfbe; margin-top: 8px;">الرسالة:</strong>
-                                            <span style="color: #9fbf7f;">${c.planBMsg}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid">
                     <!-- حذف الرسائل -->
                     <div class="card">
                         <h3>🗑️ حذف الرسائل</h3>
@@ -618,103 +924,30 @@ app.get('/', (req, res) => {
                         <button type="button" class="btn btn-danger" onclick="deleteMessages()" style="width: 100%;">🗑️ حذف الرسائل</button>
                     </div>
 
-                    <!-- الرومات المخصصة -->
-                    <div class="card">
-                        <h3>🎮 الرومات المخصصة (Custom Rooms)</h3>
-                        <div class="accordion-container" id="customRoomsContainer">
-                            ${Array.isArray(c.customRooms) && c.customRooms.length > 0 ? c.customRooms.map((room, idx) => `
-                                <div class="accordion-item" data-room-id="${idx}">
-                                    <div class="accordion-header">
-                                        <span>🔧 روم مخصص #${idx + 1}</span>
-                                        <span class="accordion-icon">▼</span>
-                                    </div>
-                                    <div class="accordion-content">
-                                        <div class="accordion-content-inner">
-                                            <div class="stat-item" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-                                                <strong style="color: #c9bfbe;">القناة:</strong>
-                                                <span style="color: #9fbf7f;">${room.channelId}</span>
-                                                <strong style="color: #c9bfbe; margin-top: 8px;">الرسالة:</strong>
-                                                <span style="color: #9fbf7f;">${room.message}</span>
-                                                <strong style="color: #c9bfbe; margin-top: 8px;">المؤقت:</strong>
-                                                <span style="color: #9fbf7f;">${room.interval} ثانية</span>
-                                                <strong style="color: #c9bfbe; margin-top: 8px;">الحالة:</strong>
-                                                <span style="color: ${room.active ? '#9fbf7f' : '#c9a5a5'};">${room.active ? '✅ مشغل' : '❌ معطل'}</span>
-                                            </div>
-                                            <div style="display: flex; gap: 10px; margin-top: 12px;">
-                                                <button type="button" class="btn btn-danger" onclick="deleteCustomRoom(${idx})" style="flex: 1; min-width: 100px;">🗑️ حذف</button>
-                                                <a href="/api/toggle-custom-room/${idx}" class="btn btn-warning" style="flex: 1; min-width: 100px;">${room.active ? '⏸️ إيقاف' : '▶️ تشغيل'}</a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            `).join('') : '<p style="color: #9a9390; text-align: center; padding: 15px;">لا توجد رومات مخصصة</p>'}
-                        </div>
-
-                        <div style="margin-top: 20px; padding: 15px; background: rgba(42, 38, 32, 0.5); border-radius: 8px; border: 1.5px solid rgba(120, 119, 118, 0.3);">
-                            <h4 style="color: #b8aeac; margin-bottom: 12px;">➕ إضافة روم مخصص جديد</h4>
-                            <div class="form-group">
-                                <label>🔧 رقم القناة</label>
-                                <input type="text" id="newRoomChannel" placeholder="أدخل رقم القناة" required>
-                            </div>
-                            <div class="form-group">
-                                <label>💬 الرسالة</label>
-                                <input type="text" id="newRoomMessage" placeholder="الرسالة اللي تبي ترسلها" required>
-                            </div>
-                            <div class="form-group">
-                                <label>⏱️ المؤقت (بالثواني)</label>
-                                <input type="number" id="newRoomInterval" placeholder="مثال: 30" min="1" required>
-                            </div>
-                            <button type="button" class="btn btn-success" onclick="addCustomRoom()" style="width: 100%;">➕ إضافة الروم</button>
-                        </div>
-                    </div>
-
-                    <!-- تغيير حالة النشاط -->
-                    <div class="card">
-                        <h3>🎮 حالة النشاط (Presence)</h3>
-                        <form action="/api/update-presence" method="POST">
-                            <div class="form-group">
-                                <label>🎯 ما الذي تفعله؟</label>
-                                <input type="text" name="gameName" placeholder="مثال: Valorant, Fortnite, البرمجة...">
-                            </div>
-                            <button type="submit" class="btn btn-warning">🚀 تحديث الحالة</button>
-                        </form>
-                    </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <script>
+                document.querySelectorAll('[data-panel-target]').forEach(button => {
+                    button.addEventListener('click', function(event) {
+                        event.preventDefault();
+                        const target = this.getAttribute('data-panel-target');
+                        document.querySelectorAll('[data-panel-target]').forEach(item => item.classList.remove('active'));
+                        document.querySelectorAll('[data-panel]').forEach(panel => {
+                            panel.classList.toggle('active', panel.getAttribute('data-panel') === target);
+                        });
+                        this.classList.add('active');
+                    });
+                });
+
                 document.querySelectorAll('.accordion-header').forEach(header => {
                     header.addEventListener('click', function() {
                         const item = this.parentElement;
                         item.classList.toggle('active');
                     });
                 });
-
-                function addCustomRoom() {
-                    const channel = document.getElementById('newRoomChannel').value;
-                    const message = document.getElementById('newRoomMessage').value;
-                    const interval = document.getElementById('newRoomInterval').value;
-
-                    if (!channel || !message || !interval) {
-                        alert('❌ ملء جميع الحقول مطلوب!');
-                        return;
-                    }
-
-                    fetch('/api/add-custom-room', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ channelId: channel, message, interval: parseInt(interval) })
-                    }).then(() => location.reload());
-                }
-
-                function deleteCustomRoom(idx) {
-                    if (confirm('هل أنت متأكد من حذف هذا الروم؟')) {
-                        fetch('/api/delete-custom-room/' + idx, { method: 'POST' })
-                            .then(() => location.reload());
-                    }
-                }
 
                 function deleteMessages() {
                     const channelId = document.getElementById('deleteChannelId').value.trim();
@@ -733,6 +966,67 @@ app.get('/', (req, res) => {
                         if (data.success) location.reload();
                     });
                 }
+
+                function syncTargetIds() {
+                    const ids = Array.from(document.querySelectorAll('.target-chip')).map(chip => chip.dataset.targetId);
+                    document.getElementById('task4TargetIds').value = ids.join(',');
+                }
+
+                function updateTargetModeStyle() {
+                    const manager = document.querySelector('.target-manager');
+                    const randomMode = document.getElementById('task4TargetMode').value === 'random';
+                    manager.classList.toggle('random-mode', randomMode);
+                }
+
+                function setPrimaryTarget(chip) {
+                    document.querySelectorAll('.target-chip').forEach(item => {
+                        item.classList.remove('is-primary');
+                        item.querySelector('.primary-label').textContent = '';
+                        item.querySelector('[data-target-action="primary"]').textContent = 'جعله أساسيًا';
+                    });
+                    chip.classList.add('is-primary');
+                    chip.querySelector('.primary-label').textContent = 'أساسي';
+                    chip.querySelector('[data-target-action="primary"]').textContent = 'الأساسي';
+                    document.getElementById('task4TargetId').value = chip.dataset.targetId;
+                    syncTargetIds();
+                }
+
+                function bindTargetActions(chip) {
+                    chip.querySelector('[data-target-action="primary"]').addEventListener('click', () => setPrimaryTarget(chip));
+                    chip.querySelector('[data-target-action="remove"]').addEventListener('click', () => {
+                        const wasPrimary = chip.classList.contains('is-primary');
+                        chip.remove();
+                        const firstTarget = document.querySelector('.target-chip');
+                        if (wasPrimary && firstTarget) setPrimaryTarget(firstTarget);
+                        else syncTargetIds();
+                    });
+                }
+
+                function addTarget() {
+                    const input = document.getElementById('newTargetId');
+                    const id = input.value.trim().replace(/^<@!?/, '').replace(/>$/, '');
+                    if (!/^\d{15,25}$/.test(id)) {
+                        alert('❌ أدخل ID عضو صحيح');
+                        return;
+                    }
+                    if (document.querySelector('[data-target-id="' + id + '"]')) {
+                        alert('⚠️ هذا العضو موجود بالقائمة');
+                        return;
+                    }
+                    const chip = document.createElement('div');
+                    chip.className = 'target-chip';
+                    chip.dataset.targetId = id;
+                    chip.innerHTML = '<span class="target-id">' + id + '</span><span class="primary-label"></span><button type="button" data-target-action="primary">جعله أساسيًا</button><button type="button" data-target-action="remove">حذف</button>';
+                    bindTargetActions(chip);
+                    document.getElementById('targetList').appendChild(chip);
+                    input.value = '';
+                    syncTargetIds();
+                }
+
+                document.querySelectorAll('.target-chip').forEach(bindTargetActions);
+                document.getElementById('task4TargetMode')?.addEventListener('change', updateTargetModeStyle);
+                document.getElementById('targetsForm')?.addEventListener('submit', syncTargetIds);
+
             </script>
         </html>
     `);
@@ -743,6 +1037,20 @@ app.get('/api/toggle/:action', (req, res) => {
     const action = req.params.action;
     if (global.botEmitter) {
         global.botEmitter.emit('control', action);
+    }
+    res.redirect('/');
+});
+
+app.get('/api/toggle-task/:task', (req, res) => {
+    if (global.botEmitter) {
+        global.botEmitter.emit('toggleTask', req.params.task);
+    }
+    res.redirect('/');
+});
+
+app.get('/api/toggle-planb', (req, res) => {
+    if (global.botEmitter) {
+        global.botEmitter.emit('togglePlanB');
     }
     res.redirect('/');
 });
@@ -775,20 +1083,6 @@ app.get('/api/select-account/:id', (req, res) => {
     res.redirect('/');
 });
 
-app.post('/api/add-custom-room', (req, res) => {
-    if (global.botEmitter) {
-        global.botEmitter.emit('addCustomRoom', req.body);
-    }
-    res.json({ success: true });
-});
-
-app.post('/api/delete-custom-room/:id', (req, res) => {
-    if (global.botEmitter) {
-        global.botEmitter.emit('deleteCustomRoom', parseInt(req.params.id));
-    }
-    res.json({ success: true });
-});
-
 app.post('/api/delete-messages', async (req, res) => {
     if (!global.botEmitter) {
         return res.json({ success: false, message: '⚠️ البوت غير متاح' });
@@ -805,20 +1099,6 @@ app.post('/api/delete-messages', async (req, res) => {
     });
 
     res.json(result || { success: false, message: '⚠️ لم يتم حذف الرسائل' });
-});
-
-app.get('/api/toggle-custom-room/:id', (req, res) => {
-    if (global.botEmitter) {
-        global.botEmitter.emit('toggleCustomRoom', parseInt(req.params.id));
-    }
-    res.redirect('/');
-});
-
-app.post('/api/update-presence', (req, res) => {
-    if (global.botEmitter) {
-        global.botEmitter.emit('updatePresence', req.body.gameName);
-    }
-    res.redirect('/');
 });
 
 app.listen(port, () => {
