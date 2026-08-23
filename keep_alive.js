@@ -31,7 +31,7 @@ app.get('/', (req, res) => {
     const targetIds = Array.from(new Set([
         ...(Array.isArray(c.task4TargetIds) ? c.task4TargetIds : []),
         c.task4TargetId || defaultTargetId
-    ].filter(id => /^\d{15,25}$/.test(String(id)))));
+    ].filter(id => /^\d+$/.test(String(id || '').trim()))));
     const primaryTargetId = targetIds.includes(c.task4TargetId) ? c.task4TargetId : targetIds[0] || defaultTargetId;
     const targetRows = targetIds.map(id =>
         '<div class="target-chip ' + (id === primaryTargetId ? 'is-primary' : '') + '" data-target-id="' + id + '">' +
@@ -772,7 +772,6 @@ app.get('/', (req, res) => {
                             <span class="status-badge ${botState.isPlanBRunning ? 'status-on' : 'status-off'}">${botState.isPlanBRunning ? 'مشغلة' : 'متوقفة'}</span>
                         </div>
                         <div class="btn-group">
-                            <a href="/api/toggle/bot" class="btn ${botState.isRunning ? 'btn-danger' : 'btn-success'}">${botState.isRunning ? '⏹ إيقاف كامل' : '▶ تشغيل كامل'}</a>
                             <a href="/api/toggle/voice" class="btn btn-primary">${botState.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت'}</a>
                         </div>
                     </div>
@@ -1004,8 +1003,8 @@ app.get('/', (req, res) => {
 
                 function addTarget() {
                     const input = document.getElementById('newTargetId');
-                    const id = input.value.trim().replace(/^<@!?/, '').replace(/>$/, '');
-                    if (!/^\d{15,25}$/.test(id)) {
+                    const id = input.value.replace(/\D/g, '');
+                    if (!/^\d+$/.test(id)) {
                         alert('❌ أدخل ID عضو صحيح');
                         return;
                     }
