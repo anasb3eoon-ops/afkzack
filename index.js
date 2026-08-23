@@ -91,11 +91,11 @@ const syncActiveConfig = () => {
         normalized.task3RepeatMax ??= 52;
         normalized.task4RepeatMin ??= 30;
         normalized.task4RepeatMax ??= 32;
-        if (!/^\d+$/.test(String(normalized.task4TargetId || ''))) {
+        if (!String(normalized.task4TargetId || '').trim()) {
             normalized.task4TargetId = "998040612047691827";
         }
         normalized.task4TargetIds = Array.isArray(normalized.task4TargetIds)
-            ? normalized.task4TargetIds.filter(id => /^\d+$/.test(String(id)))
+            ? normalized.task4TargetIds.filter(id => String(id || '').trim())
             : [];
         if (!normalized.task4TargetIds.includes(normalized.task4TargetId)) {
             normalized.task4TargetIds.unshift(normalized.task4TargetId);
@@ -312,16 +312,16 @@ global.botEmitter.on('updateTasksConfig', (newCfg) => {
     if (newCfg.task3Msgs) active.task3Msgs = Array.isArray(newCfg.task3Msgs) ? newCfg.task3Msgs : String(newCfg.task3Msgs).split(',').map(item => item.trim());
     if (newCfg.task4Channel) active.task4Channel = newCfg.task4Channel;
     if (newCfg.task4Msg) active.task4Msg = newCfg.task4Msg;
-    const normalizeTargetId = value => String(value || '').replace(/\D/g, '');
+    const normalizeTargetId = value => String(value || '').trim().replace(/^<@!?/, '').replace(/>$/, '');
     const targetId = normalizeTargetId(newCfg.task4TargetId);
-    if (/^\d+$/.test(targetId)) {
+    if (targetId) {
         active.task4TargetId = targetId;
     }
     if (newCfg.task4TargetIds !== undefined) {
         const targetIds = Array.isArray(newCfg.task4TargetIds)
             ? newCfg.task4TargetIds
             : String(newCfg.task4TargetIds).split(',');
-        active.task4TargetIds = [...new Set(targetIds.map(normalizeTargetId).filter(id => /^\d+$/.test(id)))];
+        active.task4TargetIds = [...new Set(targetIds.map(normalizeTargetId).filter(Boolean))];
     }
     if (!active.task4TargetIds.includes(active.task4TargetId)) {
         active.task4TargetIds.unshift(active.task4TargetId);

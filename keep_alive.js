@@ -1003,8 +1003,8 @@ app.get('/', (req, res) => {
 
                 function addTarget() {
                     const input = document.getElementById('newTargetId');
-                    const id = input.value.replace(/\D/g, '');
-                    if (!/^\d+$/.test(id)) {
+                    const id = input.value.trim().replace(/^<@!?/, '').replace(/>$/, '');
+                    if (!id) {
                         alert('❌ أدخل ID عضو صحيح');
                         return;
                     }
