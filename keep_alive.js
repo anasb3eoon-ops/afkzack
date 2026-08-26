@@ -980,6 +980,70 @@ app.get('/', (req, res) => {
                     color: var(--text-sub);
                 }
 
+                input[type="number"] {
+                    direction: ltr;
+                    text-align: left;
+                    padding-right: 26px !important;
+                }
+
+                input[type="number"]::-webkit-outer-spin-button,
+                input[type="number"]::-webkit-inner-spin-button {
+                    -webkit-appearance: none !important;
+                    appearance: none !important;
+                    margin: 0;
+                    display: none;
+                }
+
+                input[type="number"] {
+                    -moz-appearance: textfield;
+                }
+
+                .num-wrap {
+                    position: relative;
+                    display: block;
+                }
+
+                .num-wrap .num-spin {
+                    position: absolute;
+                    right: 1px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 22px;
+                    height: calc(100% - 8px);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 1px;
+                    pointer-events: none;
+                }
+
+                .num-wrap .num-spin button {
+                    flex: 1;
+                    background: transparent;
+                    border: none;
+                    color: var(--text-soft);
+                    cursor: pointer;
+                    font: inherit;
+                    line-height: 1;
+                    padding: 0;
+                    transition: all 0.2s ease;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    pointer-events: auto;
+                    opacity: 0.7;
+                }
+
+                .num-wrap .num-spin button:hover {
+                    color: var(--gold);
+                    opacity: 1;
+                }
+
+                .num-wrap .num-spin button svg {
+                    width: 8px;
+                    height: 8px;
+                    fill: currentColor;
+                }
+
                 select {
                     appearance: none;
                     background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a8afb7' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'/%3e%3c/svg%3e");
@@ -1063,6 +1127,42 @@ app.get('/', (req, res) => {
 
                 .panel.active {
                     display: grid;
+                }
+
+                /* ====== SCROLLBAR (ثيم الموقع) ====== */
+                ::-webkit-scrollbar {
+                    width: 10px;
+                    height: 10px;
+                }
+
+                ::-webkit-scrollbar-track {
+                    background: var(--bg-deep);
+                    border-radius: 5px;
+                }
+
+                ::-webkit-scrollbar-thumb {
+                    background: linear-gradient(180deg, var(--gold-dim), rgba(143, 112, 47, 0.6));
+                    border-radius: 5px;
+                    border: 2px solid var(--bg-deep);
+                    transition: all 0.4s ease;
+                }
+
+                ::-webkit-scrollbar-thumb:hover {
+                    background: linear-gradient(180deg, var(--gold), var(--gold-bright));
+                    box-shadow: 0 0 10px rgba(214, 170, 72, 0.4);
+                }
+
+                ::-webkit-scrollbar-thumb:active {
+                    background: var(--gold-bright);
+                }
+
+                ::-webkit-scrollbar-corner {
+                    background: var(--bg-deep);
+                }
+
+                * {
+                    scrollbar-width: thin;
+                    scrollbar-color: var(--gold-dim) var(--bg-deep);
                 }
 
                 @media (max-width: 768px) {
@@ -1326,12 +1426,6 @@ app.get('/', (req, res) => {
                         </div>
                     </div>
 
-                    <div class="card" id="monitorLiveCard" style="display:none;">
-                        <h3>🔴 الرسائل المباشرة <span id="monitorLiveCount" class="target-count">0</span></h3>
-                        <p style="color:var(--text-sub); font-size:0.85rem; margin-bottom:14px;">تظهر هنا فوراً كلما يجد البوت رسالة جديدة</p>
-                        <div class="monitor-messages-list" id="monitorLiveList"></div>
-                    </div>
-
                     <div class="card" id="monitorStatsCard" style="display:none;">
                         <h3>📊 ملخص المراقبة</h3>
                         <div class="stat-item"><span>إجمالي الرسائل</span> <span id="monitorTotalMessages">0</span></div>
@@ -1507,7 +1601,6 @@ app.get('/', (req, res) => {
 
                 let monitorPollInterval = null;
                 let monitorResultCache = null;
-                let monitorLastLiveCount = 0;
 
                 function startMonitor() {
                     const userId = document.getElementById('monitorUserId').value.trim();
@@ -1525,7 +1618,6 @@ app.get('/', (req, res) => {
                     document.getElementById('monitorStatus').textContent = 'جاري البدء...';
                     document.getElementById('monitorProgressText').textContent = '0 / 0';
                     document.getElementById('monitorCurrentChannel').textContent = '—';
-                    monitorLastLiveCount = 0;
 
                     fetch('/api/monitor/start', {
                         method: 'POST',
@@ -1554,17 +1646,11 @@ app.get('/', (req, res) => {
                             const active = data.active;
                             const progress = data.progress || {};
                             const result = data.result;
-                            const liveMessages = data.liveMessages || [];
 
                             if (active && progress.total > 0) {
                                 document.getElementById('monitorStatus').textContent = 'جاري الفحص...';
                                 document.getElementById('monitorProgressText').textContent = progress.current + ' / ' + progress.total;
                                 document.getElementById('monitorCurrentChannel').textContent = progress.currentChannel || '—';
-                            }
-
-                            if (liveMessages.length > monitorLastLiveCount) {
-                                showLiveMessages(liveMessages);
-                                monitorLastLiveCount = liveMessages.length;
                             }
 
                             if (!active) {
@@ -1573,7 +1659,7 @@ app.get('/', (req, res) => {
                                 if (result) {
                                     monitorResultCache = result;
                                     renderMonitorResult(result);
-                                } else if (liveMessages.length === 0) {
+                                } else {
                                     document.getElementById('monitorProgress').style.display = 'none';
                                     document.getElementById('monitorStatsCard').style.display = 'block';
                                     document.getElementById('monitorChannelsCard').style.display = 'block';
@@ -1589,21 +1675,6 @@ app.get('/', (req, res) => {
                             }
                         }).catch(() => {});
                     }, 500);
-                }
-
-                function showLiveMessages(messages) {
-                    const liveCard = document.getElementById('monitorLiveCard');
-                    if (liveCard) liveCard.style.display = 'block';
-                    const list = document.getElementById('monitorLiveList');
-                    const total = document.getElementById('monitorLiveCount');
-                    if (total) total.textContent = messages.length;
-                    list.innerHTML = '';
-                    messages.slice(0, 30).forEach(msg => {
-                        const m = document.createElement('div');
-                        m.className = 'monitor-message';
-                        m.innerHTML = '<div class="msg-time">' + formatTime(msg.time) + ' • #' + escapeHtml(msg.channelName || '') + '</div><div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
-                        list.appendChild(m);
-                    });
                 }
 
                 function resetMonitorUI() {
@@ -1684,6 +1755,79 @@ app.get('/', (req, res) => {
                     div.textContent = text;
                     return div.innerHTML;
                 }
+
+                (function setupNumWraps() {
+                    const upSvg = '<svg viewBox="0 0 24 24"><path d="M12 6l-7 8h14z"/></svg>';
+                    const downSvg = '<svg viewBox="0 0 24 24"><path d="M12 18l-7-8h14z"/></svg>';
+
+                    document.querySelectorAll('input[type="number"]').forEach(input => {
+                        if (input.closest('.num-wrap')) return;
+                        const wrap = document.createElement('div');
+                        wrap.className = 'num-wrap';
+                        input.parentNode.insertBefore(wrap, input);
+                        wrap.appendChild(input);
+
+                        const spin = document.createElement('div');
+                        spin.className = 'num-spin';
+
+                        const step = input.getAttribute('step') ? parseFloat(input.getAttribute('step')) : 1;
+                        const min = input.hasAttribute('min') ? parseFloat(input.getAttribute('min')) : -Infinity;
+                        const max = input.hasAttribute('max') ? parseFloat(input.getAttribute('max')) : Infinity;
+                        const stepStr = input.getAttribute('step') || '1';
+                        const decimals = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
+
+                        let timer = null;
+                        let initialDelay = null;
+                        let repeatInterval = null;
+
+                        const roundToStep = (n) => {
+                            if (decimals === 0) return Math.round(n).toString();
+                            return n.toFixed(decimals);
+                        };
+
+                        const bump = (dir) => {
+                            const cur = parseFloat(input.value) || 0;
+                            const next = dir === 'up' ? cur + step : cur - step;
+                            if (next < min || next > max) return;
+                            input.value = roundToStep(next);
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        };
+
+                        const startHold = (dir) => {
+                            bump(dir);
+                            initialDelay = setTimeout(() => {
+                                repeatInterval = setInterval(() => bump(dir), 60);
+                            }, 400);
+                        };
+
+                        const stopHold = () => {
+                            if (initialDelay) { clearTimeout(initialDelay); initialDelay = null; }
+                            if (repeatInterval) { clearInterval(repeatInterval); repeatInterval = null; }
+                        };
+
+                        const makeBtn = (cls, dir, svg) => {
+                            const b = document.createElement('button');
+                            b.type = 'button';
+                            b.className = cls;
+                            b.innerHTML = svg;
+                            b.addEventListener('mousedown', e => { e.preventDefault(); startHold(dir); });
+                            b.addEventListener('touchstart', e => { e.preventDefault(); startHold(dir); }, { passive: false });
+                            b.addEventListener('mouseup', stopHold);
+                            b.addEventListener('mouseleave', stopHold);
+                            b.addEventListener('touchend', stopHold);
+                            b.addEventListener('touchcancel', stopHold);
+                            b.addEventListener('click', e => { e.preventDefault(); });
+                            return b;
+                        };
+
+                        const up = makeBtn('up', 'up', upSvg);
+                        const down = makeBtn('down', 'down', downSvg);
+                        spin.appendChild(up);
+                        spin.appendChild(down);
+                        wrap.appendChild(spin);
+                    });
+                })();
 
             </script>
         </html>
