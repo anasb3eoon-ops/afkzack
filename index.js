@@ -9,17 +9,11 @@ global.botEmitter = new EventEmitter();
 const client = new Client();
 const CONFIG_FILE = './bot_config.json';
 
-const accountColors = ['#a89f9e', '#7a9b5a', '#8c7a68', '#5d7087', '#8d6d5f', '#7d5f95', '#77856d'];
-
-const createDefaultAccount = (index = 1, preset = {}) => ({
-    id: `account-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: preset.name || `الحساب ${index}`,
-    token: preset.token || process.env.token || "",
-    color: preset.color || accountColors[(index - 1) % accountColors.length],
-    isPrimary: index === 1,
-    guildId: preset.guildId || process.env.GUILD_ID || "",
-    afkChannelId: preset.afkChannelId || process.env.AFK_CHANNEL_ID || "1496645738086531194",
-    targetGuildId: preset.targetGuildId || process.env.TARGET_GUILD_ID || "1264561928034975775",
+const defaultConfig = {
+    token: process.env.token || "",
+    guildId: process.env.GUILD_ID || "",
+    afkChannelId: process.env.AFK_CHANNEL_ID || "1496645738086531194",
+    targetGuildId: process.env.TARGET_GUILD_ID || "1264561928034975775",
 
     task1Channel: "1507460885583626351",
     task1Msg: "!ذكريات",
@@ -48,104 +42,30 @@ const createDefaultAccount = (index = 1, preset = {}) => ({
 
     planBChannel: "1503150255594799205",
     planBMsg: "يا شباب جمعو نقاط",
-    planBRepeat: 2.5
-});
+    planBRepeat: 2.5,
 
-let config = {
-    primaryAccountId: "",
-    activeAccountId: "",
-    accounts: []
+    task5Channel: "1505231951731097610",
+    task5Games: ["بلاكجاك", "روليت", "عملة", "عمل", "سلوت", "فامبيرز"],
+    task5BetMin: 5000,
+    task5BetMax: 10000,
+    task5GapMin: 10,
+    task5GapMax: 12
 };
 
-const getActiveAccount = () => {
-    if (!Array.isArray(config.accounts) || config.accounts.length === 0) {
-        config.accounts = [createDefaultAccount(1)];
-    }
-
-    if (!config.primaryAccountId && config.accounts[0]) {
-        config.primaryAccountId = config.accounts[0].id;
-        config.accounts[0].isPrimary = true;
-    }
-
-    const selected = config.accounts.find(account => account.id === config.activeAccountId);
-    if (selected) return selected;
-
-    const primary = config.accounts.find(account => account.id === config.primaryAccountId) || config.accounts[0];
-    config.activeAccountId = primary.id;
-    return primary;
-};
-
-const syncActiveConfig = () => {
-    const active = getActiveAccount();
-    config.primaryAccountId = config.accounts[0]?.id || config.primaryAccountId || active.id;
-    config.accounts = config.accounts.map((account, index) => {
-        const normalized = { ...account };
-        normalized.isPrimary = account.id === config.primaryAccountId || index === 0;
-        normalized.color = normalized.color || accountColors[index % accountColors.length];
-        normalized.task1MessageGap ??= normalized.task1MessageGapMin ?? 5;
-        normalized.task1RepeatMin ??= 30;
-        normalized.task1RepeatMax ??= 35;
-        normalized.task2RepeatMin ??= 30;
-        normalized.task2RepeatMax ??= 32;
-        normalized.task3RepeatMin ??= 50;
-        normalized.task3RepeatMax ??= 52;
-        normalized.task4RepeatMin ??= 30;
-        normalized.task4RepeatMax ??= 32;
-        if (!String(normalized.task4TargetId || '').trim()) {
-            normalized.task4TargetId = "998040612047691827";
-        }
-        normalized.task4TargetIds = Array.isArray(normalized.task4TargetIds)
-            ? normalized.task4TargetIds.filter(id => String(id || '').trim())
-            : [];
-        if (!normalized.task4TargetIds.includes(normalized.task4TargetId)) {
-            normalized.task4TargetIds.unshift(normalized.task4TargetId);
-        }
-        normalized.task4TargetMode = normalized.task4TargetMode === 'random' ? 'random' : 'fixed';
-        normalized.planBRepeat ??= normalized.planBRepeatMin ?? 2.5;
-        if (normalized.isPrimary) config.primaryAccountId = normalized.id;
-        if (account.id === active.id) Object.assign(active, normalized);
-        return normalized;
-    });
-    Object.keys(active).forEach(key => {
-        if (key !== 'id' && key !== 'name') config[key] = active[key];
-    });
-    config.activeAccountId = active.id;
-};
+let config = { ...defaultConfig };
 
 if (fs.existsSync(CONFIG_FILE)) {
     try {
         const savedData = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-        config = {
-            ...config,
-            ...savedData,
-            accounts: Array.isArray(savedData.accounts) && savedData.accounts.length > 0 ? savedData.accounts : [createDefaultAccount(1)]
-        };
+        config = { ...defaultConfig, ...savedData };
     } catch (e) {
         console.error("❌ خطأ قراءة الملف:", e);
     }
 }
 
-if (!Array.isArray(config.accounts) || config.accounts.length === 0) {
-    config.accounts = [createDefaultAccount(1)];
-}
-if (!config.primaryAccountId) {
-    config.primaryAccountId = config.accounts[0].id;
-    config.accounts[0].isPrimary = true;
-}
-if (!config.activeAccountId || !config.accounts.some(account => account.id === config.activeAccountId)) {
-    config.activeAccountId = config.primaryAccountId || config.accounts[0].id;
-}
-syncActiveConfig();
-
 const saveConfig = () => {
     try {
-        const payload = {
-            primaryAccountId: config.primaryAccountId,
-            activeAccountId: config.activeAccountId,
-            accounts: config.accounts.map(account => ({ ...account }))
-        };
-        fs.writeFileSync(CONFIG_FILE, JSON.stringify(payload, null, 2), 'utf8');
-        syncActiveConfig();
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
     } catch (e) {
         console.error("❌ خطأ حفظ الملف:", e);
     }
@@ -161,7 +81,7 @@ let isChatActive = true;
 let isVoiceActive = true;
 let isBotRunning = true;
 let isTaskRunning = true;
-const taskStates = { task1: false, task2: false, task3: false, task4: false };
+const taskStates = { task1: false, task2: false, task3: false, task4: false, task5: false };
 let planBInterval = null;
 let isPlanBRunning = false;
 let task3Index = 0;
@@ -172,13 +92,12 @@ let stats = {
     task2CountLog: 0,
     task3CountLog: 0,
     task4CountLog: 0,
+    task5CountLog: 0,
     planBCountLog: 0,
     lastActiveTime: "لا يوجد نشاط"
 };
 
 const syncState = () => {
-    const active = getActiveAccount();
-    const profileView = { ...config, ...active, activeAccountId: config.activeAccountId, accounts: config.accounts };
     keepAlive.updateBotState({
         isRunning: isBotRunning,
         isChatActive,
@@ -187,7 +106,7 @@ const syncState = () => {
         isTaskRunning,
         taskStates,
         stats,
-        config: profileView
+        config
     });
 };
 
@@ -214,7 +133,6 @@ const connectToVoice = (targetChannelId = null) => {
     } catch (e) { console.error("❌ خطأ اتصال صوتي:", e); }
 };
 
-// الاستماع لأوامر لوحة التحكم Web Dashboard
 global.botEmitter.on('control', (action) => {
     if (action === 'bot') {
         isBotRunning = !isBotRunning;
@@ -222,6 +140,7 @@ global.botEmitter.on('control', (action) => {
             isChatActive = false;
             isVoiceActive = false;
             isTaskRunning = false;
+            task5Stopped = true;
             Object.keys(taskTimers).forEach(taskName => {
                 if (taskTimers[taskName]) clearTimeout(taskTimers[taskName]);
                 taskTimers[taskName] = null;
@@ -240,8 +159,7 @@ global.botEmitter.on('control', (action) => {
         isVoiceActive = !isVoiceActive;
         if (isVoiceActive) {
             connectToVoice();
-        }
-        else {
+        } else {
             const conn = getVoiceConnection(config.guildId);
             if (conn) conn.destroy();
         }
@@ -251,6 +169,8 @@ global.botEmitter.on('control', (action) => {
         isTaskRunning = !isTaskRunning;
         if (isTaskRunning) {
             startTaskLoops();
+        } else {
+            task5Stopped = true;
         }
     } else if (action === 'planb') {
         isPlanBRunning = !isPlanBRunning;
@@ -267,11 +187,19 @@ global.botEmitter.on('toggleTask', (taskName) => {
     taskStates[taskName] = !taskStates[taskName];
     const taskFn = taskFunctions[taskName];
     if (taskStates[taskName] && taskFn && isBotRunning && isChatActive && isTaskRunning) {
-        runTaskInOrder(taskName, taskFn);
-        scheduleSingleTask(taskName, taskFn);
-    } else if (!taskStates[taskName] && taskTimers[taskName]) {
-        clearTimeout(taskTimers[taskName]);
-        taskTimers[taskName] = null;
+        if (taskName === 'task5') {
+            runTaskInOrder(taskName, taskFn);
+        } else {
+            runTaskInOrder(taskName, taskFn);
+            scheduleSingleTask(taskName, taskFn);
+        }
+    } else if (!taskStates[taskName]) {
+        if (taskName === 'task5') {
+            task5Stopped = true;
+        } else if (taskTimers[taskName]) {
+            clearTimeout(taskTimers[taskName]);
+            taskTimers[taskName] = null;
+        }
     }
     syncState();
 });
@@ -291,48 +219,62 @@ global.botEmitter.on('updateConfig', (newCfg) => {
 });
 
 global.botEmitter.on('updateTasksConfig', (newCfg) => {
-    const active = getActiveAccount();
+    if (newCfg.guildId) config.guildId = newCfg.guildId;
+    if (newCfg.afkChannelId) config.afkChannelId = newCfg.afkChannelId;
+    if (newCfg.targetGuildId) config.targetGuildId = newCfg.targetGuildId;
+    if (newCfg.task1Channel) config.task1Channel = newCfg.task1Channel;
+    if (newCfg.task1Msg) config.task1Msg = newCfg.task1Msg;
+    if (newCfg.task1Count) config.task1Count = parseInt(newCfg.task1Count) || 10;
     let timingChanged = false;
-    if (newCfg.token) active.token = newCfg.token;
-    if (newCfg.guildId) active.guildId = newCfg.guildId;
-    if (newCfg.afkChannelId) active.afkChannelId = newCfg.afkChannelId;
-    if (newCfg.targetGuildId) active.targetGuildId = newCfg.targetGuildId;
-    if (newCfg.task1Channel) active.task1Channel = newCfg.task1Channel;
-    if (newCfg.task1Msg) active.task1Msg = newCfg.task1Msg;
-    if (newCfg.task1Count) active.task1Count = parseInt(newCfg.task1Count) || 10;
     timingKeys.forEach(key => {
         if (newCfg[key] !== undefined && Number.isFinite(Number(newCfg[key]))) {
-            active[key] = Math.max(0.1, Number(newCfg[key]));
+            config[key] = Math.max(0.1, Number(newCfg[key]));
             timingChanged = true;
         }
     });
-    if (newCfg.task2Channel) active.task2Channel = newCfg.task2Channel;
-    if (newCfg.task2Msg) active.task2Msg = newCfg.task2Msg;
-    if (newCfg.task3Channel) active.task3Channel = newCfg.task3Channel;
-    if (newCfg.task3Msgs) active.task3Msgs = Array.isArray(newCfg.task3Msgs) ? newCfg.task3Msgs : String(newCfg.task3Msgs).split(',').map(item => item.trim());
-    if (newCfg.task4Channel) active.task4Channel = newCfg.task4Channel;
-    if (newCfg.task4Msg) active.task4Msg = newCfg.task4Msg;
+    if (newCfg.task2Channel) config.task2Channel = newCfg.task2Channel;
+    if (newCfg.task2Msg) config.task2Msg = newCfg.task2Msg;
+    if (newCfg.task3Channel) config.task3Channel = newCfg.task3Channel;
+    if (newCfg.task3Msgs) config.task3Msgs = Array.isArray(newCfg.task3Msgs) ? newCfg.task3Msgs : String(newCfg.task3Msgs).split(',').map(item => item.trim());
+    if (newCfg.task4Channel) config.task4Channel = newCfg.task4Channel;
+    if (newCfg.task4Msg) config.task4Msg = newCfg.task4Msg;
     const normalizeTargetId = value => String(value || '').trim().replace(/^<@!?/, '').replace(/>$/, '');
     const targetId = normalizeTargetId(newCfg.task4TargetId);
     if (targetId) {
-        active.task4TargetId = targetId;
+        config.task4TargetId = targetId;
     }
     if (newCfg.task4TargetIds !== undefined) {
         const targetIds = Array.isArray(newCfg.task4TargetIds)
             ? newCfg.task4TargetIds
             : String(newCfg.task4TargetIds).split(',');
-        active.task4TargetIds = [...new Set(targetIds.map(normalizeTargetId).filter(Boolean))];
+        config.task4TargetIds = [...new Set(targetIds.map(normalizeTargetId).filter(Boolean))];
     }
-    if (!active.task4TargetIds.includes(active.task4TargetId)) {
-        active.task4TargetIds.unshift(active.task4TargetId);
+    if (!config.task4TargetIds.includes(config.task4TargetId)) {
+        config.task4TargetIds.unshift(config.task4TargetId);
     }
     if (newCfg.task4TargetMode === 'random' || newCfg.task4TargetMode === 'fixed') {
-        active.task4TargetMode = newCfg.task4TargetMode;
+        config.task4TargetMode = newCfg.task4TargetMode;
     }
-    if (newCfg.planBChannel) active.planBChannel = newCfg.planBChannel;
-    if (newCfg.planBMsg) active.planBMsg = newCfg.planBMsg;
-    if (newCfg.name) active.name = newCfg.name;
-    Object.assign(config, active);
+    if (newCfg.planBChannel) config.planBChannel = newCfg.planBChannel;
+    if (newCfg.planBMsg) config.planBMsg = newCfg.planBMsg;
+    if (newCfg.task5Channel) config.task5Channel = newCfg.task5Channel;
+    if (newCfg.task5Games) {
+        config.task5Games = Array.isArray(newCfg.task5Games)
+            ? newCfg.task5Games
+            : String(newCfg.task5Games).split(',').map(item => item.trim()).filter(Boolean);
+    }
+    if (newCfg.task5BetMin !== undefined && Number.isFinite(Number(newCfg.task5BetMin))) {
+        config.task5BetMin = Math.max(1, Number(newCfg.task5BetMin));
+    }
+    if (newCfg.task5BetMax !== undefined && Number.isFinite(Number(newCfg.task5BetMax))) {
+        config.task5BetMax = Math.max(config.task5BetMin || 1, Number(newCfg.task5BetMax));
+    }
+    if (newCfg.task5GapMin !== undefined && Number.isFinite(Number(newCfg.task5GapMin))) {
+        config.task5GapMin = Math.max(0.1, Number(newCfg.task5GapMin));
+    }
+    if (newCfg.task5GapMax !== undefined && Number.isFinite(Number(newCfg.task5GapMax))) {
+        config.task5GapMax = Math.max(config.task5GapMin || 0.1, Number(newCfg.task5GapMax));
+    }
     saveConfig();
     if (timingChanged) {
         if (isBotRunning && isChatActive && isTaskRunning) {
@@ -349,26 +291,18 @@ global.botEmitter.on('updateTasksConfig', (newCfg) => {
 global.botEmitter.on('deleteMessages', async ({ channelId, count = 50 }) => {
     const parsedCount = Math.min(Math.max(Number(count) || 50, 1), 100);
 
-    const result = (() => {
-        if (!channelId) {
-            return { success: false, message: '⚠️ يجب إدخال ID الروم' };
-        }
+    if (!channelId) {
+        global.botEmitter.emit('deleteMessagesResult', { success: false, message: '⚠️ يجب إدخال ID الروم' });
+        return;
+    }
 
-        const channel = client.channels.cache.get(channelId);
-        if (!channel || !channel.messages || typeof channel.messages.fetch !== 'function') {
-            return { success: false, message: '⚠️ الروم غير موجود أو لا يدعم حذف الرسائل' };
-        }
-
-        return null;
-    })();
-
-    if (result) {
-        global.botEmitter.emit('deleteMessagesResult', result);
+    const channel = client.channels.cache.get(channelId);
+    if (!channel || !channel.messages || typeof channel.messages.fetch !== 'function') {
+        global.botEmitter.emit('deleteMessagesResult', { success: false, message: '⚠️ الروم غير موجود أو لا يدعم حذف الرسائل' });
         return;
     }
 
     try {
-        const channel = client.channels.cache.get(channelId);
         const messages = await channel.messages.fetch({ limit: parsedCount });
         const list = Array.from(messages.values());
         for (let i = 0; i < list.length; i += 5) {
@@ -379,6 +313,160 @@ global.botEmitter.on('deleteMessages', async ({ channelId, count = 50 }) => {
     } catch (e) {
         global.botEmitter.emit('deleteMessagesResult', { success: false, message: `❌ خطأ حذف الرسائل: ${e.message}` });
     }
+});
+
+const monitorSharedState = {
+    active: false,
+    userId: '',
+    hoursBack: 24,
+    startedAt: null,
+    finishedAt: null,
+    progress: { current: 0, total: 0, currentChannel: '' },
+    result: null
+};
+
+global.sharedMonitorState = monitorSharedState;
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+global.botEmitter.on('monitorStart', async ({ userId, hoursBack }) => {
+    if (!config.guildId) {
+        global.botEmitter.emit('monitorResult', { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' });
+        return;
+    }
+
+    monitorSharedState.userId = String(userId).trim().replace(/^<@!?/, '').replace(/>$/, '');
+    monitorSharedState.hoursBack = Math.max(1, Math.min(720, Number(hoursBack) || 24));
+    monitorSharedState.startedAt = Date.now();
+    monitorSharedState.finishedAt = null;
+    monitorSharedState.progress = { current: 0, total: 0, currentChannel: '' };
+    monitorSharedState.result = null;
+    monitorSharedState.active = true;
+
+    const guild = client.guilds.cache.get(config.guildId);
+    if (!guild) {
+        monitorSharedState.active = false;
+        global.botEmitter.emit('monitorResult', { success: false, message: '⚠️ السيرفر غير موجود' });
+        return;
+    }
+
+    const cutoff = Date.now() - (monitorSharedState.hoursBack * 60 * 60 * 1000);
+    const channels = guild.channels.cache.filter(c =>
+        c.type === 'GUILD_TEXT' || c.type === 'GUILD_NEWS' || c.type === 0
+    );
+    const channelsArr = Array.from(channels.values());
+    monitorSharedState.progress.total = channelsArr.length;
+
+    const channelStats = [];
+    const allMessages = [];
+    let scanned = 0;
+
+    try {
+        for (const channel of channelsArr) {
+            if (!monitorSharedState.active) break;
+            if (!channel.messages || typeof channel.messages.fetch !== 'function') {
+                scanned++;
+                continue;
+            }
+
+            monitorSharedState.progress.currentChannel = channel.name;
+            let beforeId = null;
+            let channelMessages = [];
+            let stop = false;
+            let safety = 0;
+
+            while (!stop && safety < 30) {
+                safety++;
+                try {
+                    const opts = { limit: 100 };
+                    if (beforeId) opts.before = beforeId;
+                    const fetched = await channel.messages.fetch(opts);
+                    if (fetched.size === 0) break;
+                    const arr = Array.from(fetched.values());
+                    const oldestInBatch = arr[arr.length - 1];
+
+                    for (const msg of arr) {
+                        if (msg.author && msg.author.id === monitorSharedState.userId && msg.createdTimestamp >= cutoff) {
+                            channelMessages.push({
+                                id: msg.id,
+                                content: msg.content || '',
+                                timestamp: msg.createdTimestamp,
+                                time: new Date(msg.createdTimestamp).toISOString()
+                            });
+                        }
+                    }
+
+                    if (oldestInBatch && oldestInBatch.createdTimestamp < cutoff) {
+                        stop = true;
+                    } else {
+                        beforeId = oldestInBatch ? oldestInBatch.id : null;
+                        if (!beforeId) stop = true;
+                    }
+
+                    if (fetched.size < 100) break;
+                } catch (e) {
+                    if (e && e.status === 429) {
+                        const retry = (e.retry_after || 2) * 1000;
+                        await sleep(Math.min(retry + 200, 8000));
+                        continue;
+                    }
+                    if (e && (e.status === 403 || e.code === 50001 || e.code === 50013)) {
+                        break;
+                    }
+                    break;
+                }
+            }
+
+            scanned++;
+            monitorSharedState.progress.current = scanned;
+
+            if (channelMessages.length > 0) {
+                channelMessages.sort((a, b) => a.timestamp - b.timestamp);
+                channelStats.push({
+                    channelId: channel.id,
+                    channelName: channel.name,
+                    count: channelMessages.length,
+                    firstAt: channelMessages[0].time,
+                    lastAt: channelMessages[channelMessages.length - 1].time,
+                    messages: channelMessages
+                });
+                allMessages.push(...channelMessages);
+            }
+        }
+    } catch (e) {
+        monitorSharedState.active = false;
+        global.botEmitter.emit('monitorResult', { success: false, message: `❌ خطأ: ${e.message}` });
+        return;
+    }
+
+    allMessages.sort((a, b) => a.timestamp - b.timestamp);
+
+    monitorSharedState.result = {
+        userId: monitorSharedState.userId,
+        hoursBack: monitorSharedState.hoursBack,
+        startedAt: new Date(monitorSharedState.startedAt).toISOString(),
+        finishedAt: new Date().toISOString(),
+        durationMs: Date.now() - monitorSharedState.startedAt,
+        totalMessages: allMessages.length,
+        firstMessage: allMessages.length > 0 ? allMessages[0].time : null,
+        lastMessage: allMessages.length > 0 ? allMessages[allMessages.length - 1].time : null,
+        channelsScanned: channelsArr.length,
+        channelsWithActivity: channelStats.length,
+        channels: channelStats,
+        allMessages
+    };
+    monitorSharedState.finishedAt = Date.now();
+    monitorSharedState.active = false;
+
+    global.botEmitter.emit('monitorResult', { success: true, message: '✅ اكتملت المراقبة' });
+});
+
+global.botEmitter.on('monitorStop', () => {
+    monitorSharedState.active = false;
+});
+
+global.botEmitter.on('monitorGetResult', () => {
+    global.botEmitter.emit('monitorResultData', monitorSharedState);
 });
 
 const replyChatStatus = () => {
@@ -396,27 +484,15 @@ let lastMessageSentAt = 0;
 let messageQueue = Promise.resolve();
 let taskQueue = Promise.resolve();
 
-const waitForMessageThrottle = async () => {
-    const now = Date.now();
-    const elapsed = now - lastMessageSentAt;
-    if (elapsed >= MESSAGE_THROTTLE_MS) {
-        lastMessageSentAt = now;
-        return;
-    }
-
-    const waitMs = MESSAGE_THROTTLE_MS - elapsed;
-    await new Promise(resolve => setTimeout(resolve, waitMs));
-    lastMessageSentAt = Date.now();
-};
-
-const sendChannelMessage = async (channelId, messageText, label) => {
+const sendChannelMessage = async (channelId, messageText, label, skipThrottle = false) => {
     if (!channelId || !messageText) return false;
     const send = messageQueue.then(async () => {
         try {
-            const messageGap = Math.max(3000, MESSAGE_THROTTLE_MS);
-            const elapsed = Date.now() - lastMessageSentAt;
-            if (elapsed < messageGap) {
-                await new Promise(resolve => setTimeout(resolve, messageGap - elapsed));
+            if (!skipThrottle) {
+                const elapsed = Date.now() - lastMessageSentAt;
+                if (elapsed < MESSAGE_THROTTLE_MS) {
+                    await new Promise(resolve => setTimeout(resolve, MESSAGE_THROTTLE_MS - elapsed));
+                }
             }
 
             const channel = client.channels.cache.get(channelId);
@@ -457,6 +533,8 @@ const getTaskRepeatDelay = (taskName) => {
         (Number.isFinite(max) ? max : fallback) * 60 * 1000);
 };
 
+const taskTimers = { task1: null, task2: null, task3: null, task4: null, task5: null };
+
 const scheduleSingleTask = (taskName, taskFn) => {
     const delay = getTaskRepeatDelay(taskName);
     if (taskTimers[taskName]) clearTimeout(taskTimers[taskName]);
@@ -467,8 +545,6 @@ const scheduleSingleTask = (taskName, taskFn) => {
         scheduleSingleTask(taskName, taskFn);
     }, delay);
 };
-
-const taskTimers = { task1: null, task2: null, task3: null, task4: null };
 
 const runTaskInOrder = (taskName, taskFn) => {
     const run = taskQueue.then(async () => {
@@ -522,11 +598,48 @@ const runTask4 = async () => {
     stats.task4CountLog += 1;
 };
 
+let task5Stopped = true;
+
+const runTask5 = async () => {
+    if (!taskStates.task5 || !config.task5Channel) return;
+    if (!Array.isArray(config.task5Games) || config.task5Games.length === 0) return;
+
+    const betMin = Math.max(1, Number(config.task5BetMin) || 5000);
+    const betMax = Math.max(betMin, Number(config.task5BetMax) || 10000);
+    const gapMin = Math.max(0.1, Number(config.task5GapMin) || 10);
+    const gapMax = Math.max(gapMin, Number(config.task5GapMax) || 12);
+
+    task5Stopped = false;
+    let firstMessage = true;
+    while (!task5Stopped && taskStates.task5 && isBotRunning && isChatActive && isTaskRunning) {
+        for (let i = 0; i < config.task5Games.length; i++) {
+            if (task5Stopped || !taskStates.task5 || !isBotRunning || !isChatActive || !isTaskRunning) break;
+
+            const game = config.task5Games[i];
+            const bet = randomBetween(betMin, betMax);
+            const message = `!كازينو ${game} ${bet}`;
+            const sent = await sendChannelMessage(config.task5Channel, message, 'مهمة 5', firstMessage);
+            firstMessage = false;
+            if (sent) stats.task5CountLog = (stats.task5CountLog || 0) + 1;
+
+            if (task5Stopped || !taskStates.task5) break;
+            const gapSec = randomBetween(Math.floor(gapMin * 1000), Math.floor(gapMax * 1000)) / 1000;
+            await new Promise(resolve => setTimeout(resolve, gapSec * 1000));
+        }
+    }
+    task5Stopped = true;
+    if (taskTimers.task5) {
+        clearTimeout(taskTimers.task5);
+        taskTimers.task5 = null;
+    }
+};
+
 const taskFunctions = {
     task1: runTask1Burst,
     task2: runTask2,
     task3: runTask3,
-    task4: runTask4
+    task4: runTask4,
+    task5: runTask5
 };
 
 const stopPlanBLoop = () => {
@@ -561,56 +674,13 @@ const startTaskLoops = () => {
     if (taskStates.task2) runTaskInOrder('task2', runTask2);
     if (taskStates.task3) runTaskInOrder('task3', runTask3);
     if (taskStates.task4) runTaskInOrder('task4', runTask4);
+    if (taskStates.task5) runTaskInOrder('task5', runTask5);
 
     Object.entries(taskFunctions).forEach(([taskName, taskFn]) => {
+        if (taskName === 'task5') return;
         if (taskStates[taskName]) scheduleSingleTask(taskName, taskFn);
     });
 };
-
-global.botEmitter.on('addAccount', (accountData) => {
-    const newAccount = createDefaultAccount(config.accounts.length + 1, {
-        name: accountData?.name || `الحساب ${config.accounts.length + 1}`,
-        token: accountData?.token || '',
-        guildId: accountData?.guildId || '',
-        afkChannelId: accountData?.afkChannelId || '',
-        targetGuildId: accountData?.targetGuildId || '',
-        color: accountData?.color || accountColors[config.accounts.length % accountColors.length]
-    });
-    newAccount.isPrimary = false;
-    config.accounts.push(newAccount);
-    config.activeAccountId = newAccount.id;
-    if (!config.primaryAccountId) config.primaryAccountId = config.accounts[0].id;
-    syncActiveConfig();
-    saveConfig();
-    syncState();
-    console.log(`✅ تم إضافة حساب جديد: ${newAccount.name}`);
-});
-
-global.botEmitter.on('selectAccount', (accountId) => {
-    if (!config.accounts.some(account => account.id === accountId)) return;
-    config.activeAccountId = accountId;
-    syncActiveConfig();
-    saveConfig();
-    syncState();
-    console.log(`✅ تم اختيار الحساب: ${getActiveAccount().name}`);
-});
-
-global.botEmitter.on('deleteAccount', (accountId) => {
-    if (config.accounts.length <= 1) {
-        console.log('⚠️ لا يمكن حذف الحساب الأخير');
-        return;
-    }
-    const deletedPrimary = config.accounts.find(account => account.id === accountId && account.isPrimary);
-    config.accounts = config.accounts.filter(account => account.id !== accountId);
-    if (deletedPrimary) {
-        config.primaryAccountId = config.accounts[0].id;
-    }
-    config.activeAccountId = config.primaryAccountId || config.accounts[0].id;
-    syncActiveConfig();
-    saveConfig();
-    syncState();
-    console.log('✅ تم حذف الحساب');
-});
 
 client.on('ready', () => {
     console.log(`✅ تم تسجيل الدخول: ${client.user.tag}`);
@@ -619,7 +689,6 @@ client.on('ready', () => {
     startPlanBLoop();
     syncState();
     setInterval(syncState, 5000);
-    
 });
 
 client.on('messageCreate', async (message) => {
