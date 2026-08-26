@@ -315,17 +315,16 @@ global.botEmitter.on('deleteMessages', async ({ channelId, count = 50 }) => {
     }
 });
 
-const monitorSharedState = {
+global.sharedMonitorState = {
     active: false,
     userId: '',
     hoursBack: 24,
     startedAt: null,
     finishedAt: null,
     progress: { current: 0, total: 0, currentChannel: '' },
-    result: null
+    result: null,
+    liveMessages: []
 };
-
-global.sharedMonitorState = monitorSharedState;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -335,41 +334,49 @@ global.botEmitter.on('monitorStart', async ({ userId, hoursBack }) => {
         return;
     }
 
-    monitorSharedState.userId = String(userId).trim().replace(/^<@!?/, '').replace(/>$/, '');
-    monitorSharedState.hoursBack = Math.max(1, Math.min(720, Number(hoursBack) || 24));
-    monitorSharedState.startedAt = Date.now();
-    monitorSharedState.finishedAt = null;
-    monitorSharedState.progress = { current: 0, total: 0, currentChannel: '' };
-    monitorSharedState.result = null;
-    monitorSharedState.active = true;
+    global.sharedMonitorState.userId = String(userId).trim().replace(/^<@!?/, '').replace(/>$/, '');
+    global.sharedMonitorState.hoursBack = Math.max(1, Math.min(720, Number(hoursBack) || 24));
+    global.sharedMonitorState.startedAt = Date.now();
+    global.sharedMonitorState.finishedAt = null;
+    global.sharedMonitorState.progress = { current: 0, total: 0, currentChannel: '' };
+    global.sharedMonitorState.result = null;
+    global.sharedMonitorState.liveMessages = [];
+    global.sharedMonitorState.active = true;
 
     const guild = client.guilds.cache.get(config.guildId);
     if (!guild) {
-        monitorSharedState.active = false;
+        global.sharedMonitorState.active = false;
         global.botEmitter.emit('monitorResult', { success: false, message: '⚠️ السيرفر غير موجود' });
         return;
     }
 
-    const cutoff = Date.now() - (monitorSharedState.hoursBack * 60 * 60 * 1000);
+    const cutoff = Date.now() - (global.sharedMonitorState.hoursBack * 60 * 60 * 1000);
     const channels = guild.channels.cache.filter(c =>
         c.type === 'GUILD_TEXT' || c.type === 'GUILD_NEWS' || c.type === 0
     );
     const channelsArr = Array.from(channels.values());
-    monitorSharedState.progress.total = channelsArr.length;
+    global.sharedMonitorState.progress.total = channelsArr.length;
 
     const channelStats = [];
     const allMessages = [];
     let scanned = 0;
 
+    const pushLive = (msg) => {
+        global.sharedMonitorState.liveMessages.unshift(msg);
+        if (global.sharedMonitorState.liveMessages.length > 100) {
+            global.sharedMonitorState.liveMessages.length = 100;
+        }
+    };
+
     try {
         for (const channel of channelsArr) {
-            if (!monitorSharedState.active) break;
+            if (!global.sharedMonitorState.active) break;
             if (!channel.messages || typeof channel.messages.fetch !== 'function') {
                 scanned++;
                 continue;
             }
 
-            monitorSharedState.progress.currentChannel = channel.name;
+            global.sharedMonitorState.progress.currentChannel = channel.name;
             let beforeId = null;
             let channelMessages = [];
             let stop = false;
@@ -386,13 +393,17 @@ global.botEmitter.on('monitorStart', async ({ userId, hoursBack }) => {
                     const oldestInBatch = arr[arr.length - 1];
 
                     for (const msg of arr) {
-                        if (msg.author && msg.author.id === monitorSharedState.userId && msg.createdTimestamp >= cutoff) {
-                            channelMessages.push({
+                        if (msg.author && msg.author.id === global.sharedMonitorState.userId && msg.createdTimestamp >= cutoff) {
+                            const msgData = {
                                 id: msg.id,
                                 content: msg.content || '',
                                 timestamp: msg.createdTimestamp,
-                                time: new Date(msg.createdTimestamp).toISOString()
-                            });
+                                time: new Date(msg.createdTimestamp).toISOString(),
+                                channelId: channel.id,
+                                channelName: channel.name
+                            };
+                            channelMessages.push(msgData);
+                            pushLive(msgData);
                         }
                     }
 
@@ -418,7 +429,7 @@ global.botEmitter.on('monitorStart', async ({ userId, hoursBack }) => {
             }
 
             scanned++;
-            monitorSharedState.progress.current = scanned;
+            global.sharedMonitorState.progress.current = scanned;
 
             if (channelMessages.length > 0) {
                 channelMessages.sort((a, b) => a.timestamp - b.timestamp);
@@ -434,19 +445,19 @@ global.botEmitter.on('monitorStart', async ({ userId, hoursBack }) => {
             }
         }
     } catch (e) {
-        monitorSharedState.active = false;
+        global.sharedMonitorState.active = false;
         global.botEmitter.emit('monitorResult', { success: false, message: `❌ خطأ: ${e.message}` });
         return;
     }
 
     allMessages.sort((a, b) => a.timestamp - b.timestamp);
 
-    monitorSharedState.result = {
-        userId: monitorSharedState.userId,
-        hoursBack: monitorSharedState.hoursBack,
-        startedAt: new Date(monitorSharedState.startedAt).toISOString(),
+    global.sharedMonitorState.result = {
+        userId: global.sharedMonitorState.userId,
+        hoursBack: global.sharedMonitorState.hoursBack,
+        startedAt: new Date(global.sharedMonitorState.startedAt).toISOString(),
         finishedAt: new Date().toISOString(),
-        durationMs: Date.now() - monitorSharedState.startedAt,
+        durationMs: Date.now() - global.sharedMonitorState.startedAt,
         totalMessages: allMessages.length,
         firstMessage: allMessages.length > 0 ? allMessages[0].time : null,
         lastMessage: allMessages.length > 0 ? allMessages[allMessages.length - 1].time : null,
@@ -455,18 +466,14 @@ global.botEmitter.on('monitorStart', async ({ userId, hoursBack }) => {
         channels: channelStats,
         allMessages
     };
-    monitorSharedState.finishedAt = Date.now();
-    monitorSharedState.active = false;
+    global.sharedMonitorState.finishedAt = Date.now();
+    global.sharedMonitorState.active = false;
 
     global.botEmitter.emit('monitorResult', { success: true, message: '✅ اكتملت المراقبة' });
 });
 
 global.botEmitter.on('monitorStop', () => {
-    monitorSharedState.active = false;
-});
-
-global.botEmitter.on('monitorGetResult', () => {
-    global.botEmitter.emit('monitorResultData', monitorSharedState);
+    global.sharedMonitorState.active = false;
 });
 
 const replyChatStatus = () => {

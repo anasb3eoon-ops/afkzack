@@ -1326,6 +1326,12 @@ app.get('/', (req, res) => {
                         </div>
                     </div>
 
+                    <div class="card" id="monitorLiveCard" style="display:none;">
+                        <h3>🔴 الرسائل المباشرة <span id="monitorLiveCount" class="target-count">0</span></h3>
+                        <p style="color:var(--text-sub); font-size:0.85rem; margin-bottom:14px;">تظهر هنا فوراً كلما يجد البوت رسالة جديدة</p>
+                        <div class="monitor-messages-list" id="monitorLiveList"></div>
+                    </div>
+
                     <div class="card" id="monitorStatsCard" style="display:none;">
                         <h3>📊 ملخص المراقبة</h3>
                         <div class="stat-item"><span>إجمالي الرسائل</span> <span id="monitorTotalMessages">0</span></div>
@@ -1501,6 +1507,7 @@ app.get('/', (req, res) => {
 
                 let monitorPollInterval = null;
                 let monitorResultCache = null;
+                let monitorLastLiveCount = 0;
 
                 function startMonitor() {
                     const userId = document.getElementById('monitorUserId').value.trim();
@@ -1516,6 +1523,9 @@ app.get('/', (req, res) => {
                     document.getElementById('monitorStartBtn').style.display = 'none';
                     document.getElementById('monitorStopBtn').style.display = 'inline-block';
                     document.getElementById('monitorStatus').textContent = 'جاري البدء...';
+                    document.getElementById('monitorProgressText').textContent = '0 / 0';
+                    document.getElementById('monitorCurrentChannel').textContent = '—';
+                    monitorLastLiveCount = 0;
 
                     fetch('/api/monitor/start', {
                         method: 'POST',
@@ -1540,29 +1550,60 @@ app.get('/', (req, res) => {
                     if (monitorPollInterval) clearInterval(monitorPollInterval);
                     monitorPollInterval = setInterval(() => {
                         fetch('/api/monitor/result').then(r => r.json()).then(data => {
-                            const s = data.state;
-                            if (!s) return;
-                            if (s.active && s.progress && s.progress.total > 0) {
+                            if (!data.success) return;
+                            const active = data.active;
+                            const progress = data.progress || {};
+                            const result = data.result;
+                            const liveMessages = data.liveMessages || [];
+
+                            if (active && progress.total > 0) {
                                 document.getElementById('monitorStatus').textContent = 'جاري الفحص...';
-                                document.getElementById('monitorProgressText').textContent = s.progress.current + ' / ' + s.progress.total;
-                                document.getElementById('monitorCurrentChannel').textContent = s.progress.currentChannel || '—';
+                                document.getElementById('monitorProgressText').textContent = progress.current + ' / ' + progress.total;
+                                document.getElementById('monitorCurrentChannel').textContent = progress.currentChannel || '—';
                             }
-                            if (s.result && (s.result.totalMessages !== undefined || !s.active)) {
+
+                            if (liveMessages.length > monitorLastLiveCount) {
+                                showLiveMessages(liveMessages);
+                                monitorLastLiveCount = liveMessages.length;
+                            }
+
+                            if (!active) {
                                 clearInterval(monitorPollInterval);
                                 monitorPollInterval = null;
-                                monitorResultCache = s.result;
-                                renderMonitorResult(s.result);
+                                if (result) {
+                                    monitorResultCache = result;
+                                    renderMonitorResult(result);
+                                } else if (liveMessages.length === 0) {
+                                    document.getElementById('monitorProgress').style.display = 'none';
+                                    document.getElementById('monitorStatsCard').style.display = 'block';
+                                    document.getElementById('monitorChannelsCard').style.display = 'block';
+                                    document.getElementById('monitorTotalMessages').textContent = '0';
+                                    document.getElementById('monitorActiveChannels').textContent = '0';
+                                    document.getElementById('monitorChannelsScanned').textContent = progress.total || 0;
+                                    document.getElementById('monitorFirstTime').textContent = '—';
+                                    document.getElementById('monitorLastTime').textContent = '—';
+                                    document.getElementById('monitorDuration').textContent = '—';
+                                    document.getElementById('monitorChannelsList').innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-sub);">لم يتم العثور على رسائل</div>';
+                                }
                                 resetMonitorUI();
                             }
-                            if (!s.active && s.result && s.result.totalMessages === 0) {
-                                clearInterval(monitorPollInterval);
-                                monitorPollInterval = null;
-                                monitorResultCache = s.result;
-                                renderMonitorResult(s.result);
-                                resetMonitorUI();
-                            }
-                        });
+                        }).catch(() => {});
                     }, 500);
+                }
+
+                function showLiveMessages(messages) {
+                    const liveCard = document.getElementById('monitorLiveCard');
+                    if (liveCard) liveCard.style.display = 'block';
+                    const list = document.getElementById('monitorLiveList');
+                    const total = document.getElementById('monitorLiveCount');
+                    if (total) total.textContent = messages.length;
+                    list.innerHTML = '';
+                    messages.slice(0, 30).forEach(msg => {
+                        const m = document.createElement('div');
+                        m.className = 'monitor-message';
+                        m.innerHTML = '<div class="msg-time">' + formatTime(msg.time) + ' • #' + escapeHtml(msg.channelName || '') + '</div><div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
+                        list.appendChild(m);
+                    });
                 }
 
                 function resetMonitorUI() {
@@ -1679,41 +1720,35 @@ app.get('/api/state', (req, res) => {
     });
 });
 
-let monitorSharedState = {
-    active: false,
-    userId: '',
-    hoursBack: 24,
-    startedAt: null,
-    finishedAt: null,
-    progress: { current: 0, total: 0, currentChannel: '' },
-    result: null
-};
-
 app.post('/api/monitor/start', express.json(), async (req, res) => {
-    if (monitorSharedState.active) {
+    if (!global.sharedMonitorState) {
+        global.sharedMonitorState = { active: false, userId: '', hoursBack: 24, startedAt: null, finishedAt: null, progress: { current: 0, total: 0, currentChannel: '' }, result: null, liveMessages: [] };
+    }
+    if (global.sharedMonitorState.active) {
         return res.json({ success: false, message: '⚠️ المراقبة تعمل بالفعل' });
     }
     const { userId, hoursBack } = req.body || {};
     if (!userId) {
         return res.json({ success: false, message: '⚠️ يجب إدخال ID الشخص' });
     }
-    monitorSharedState = {
-        active: true,
-        userId: String(userId).trim().replace(/^<@!?/, '').replace(/>$/, ''),
-        hoursBack: Math.max(1, Math.min(720, Number(hoursBack) || 24)),
-        startedAt: Date.now(),
-        finishedAt: null,
-        progress: { current: 0, total: 0, currentChannel: '' },
-        result: null
-    };
+    global.sharedMonitorState.active = true;
+    global.sharedMonitorState.userId = String(userId).trim().replace(/^<@!?/, '').replace(/>$/, '');
+    global.sharedMonitorState.hoursBack = Math.max(1, Math.min(720, Number(hoursBack) || 24));
+    global.sharedMonitorState.startedAt = Date.now();
+    global.sharedMonitorState.finishedAt = null;
+    global.sharedMonitorState.progress = { current: 0, total: 0, currentChannel: '' };
+    global.sharedMonitorState.result = null;
+    global.sharedMonitorState.liveMessages = [];
     if (global.botEmitter) {
-        global.botEmitter.emit('monitorStart', { userId: monitorSharedState.userId, hoursBack: monitorSharedState.hoursBack });
+        global.botEmitter.emit('monitorStart', { userId: global.sharedMonitorState.userId, hoursBack: global.sharedMonitorState.hoursBack });
     }
     res.json({ success: true, message: '✅ بدأت المراقبة' });
 });
 
 app.post('/api/monitor/stop', (req, res) => {
-    monitorSharedState.active = false;
+    if (global.sharedMonitorState) {
+        global.sharedMonitorState.active = false;
+    }
     if (global.botEmitter) {
         global.botEmitter.emit('monitorStop');
     }
@@ -1721,7 +1756,18 @@ app.post('/api/monitor/stop', (req, res) => {
 });
 
 app.get('/api/monitor/result', (req, res) => {
-    res.json({ success: true, state: monitorSharedState });
+    const s = global.sharedMonitorState || { active: false, progress: {}, result: null, liveMessages: [] };
+    res.json({
+        success: true,
+        active: s.active,
+        progress: s.progress || {},
+        startedAt: s.startedAt,
+        finishedAt: s.finishedAt,
+        hoursBack: s.hoursBack,
+        userId: s.userId,
+        result: s.result,
+        liveMessages: s.liveMessages || []
+    });
 });
 
 app.post('/api/update-tasks-config', (req, res) => {
