@@ -1150,7 +1150,7 @@ global.botEmitter.on('getVoiceChannel', async ({ channelId }, cb) => {
             return;
         }
 
-        const permissionOverwrites = (channel.permissionOverwrites || []).map(po => ({
+        const permissionOverwrites = Array.from(channel.permissionOverwrites?.cache?.values() || []).map(po => ({
             id: po.id,
             type: po.type,
             allow: po.allow.bitfield.toString(),
