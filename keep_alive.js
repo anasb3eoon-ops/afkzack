@@ -1182,6 +1182,14 @@ app.get('/', (req, res) => {
                     .target-add .btn,
                     .target-mode select { width: 100%; }
                     .card { padding: 20px; }
+                    .panel[data-panel="dm"].active { display: block !important; }
+                    .dm-container { flex-direction: column; }
+                    .dm-server-list { width: 100%; height: 50px; flex-direction: row; border-left: none; border-bottom: 1px solid var(--line); }
+                    .dm-conversation-list { width: 100%; height: 200px; border-left: none; border-bottom: 1px solid var(--line); }
+                }
+
+                .panel[data-panel="dm"].active {
+                    display: block !important;
                 }
             </style>
         </head>
@@ -1199,6 +1207,7 @@ app.get('/', (req, res) => {
                     <button type="button" data-panel-target="dm">💬 المحادثات</button>
                     <button type="button" data-panel-target="roles">🛡️ الرتب</button>
                     <button type="button" data-panel-target="voice">🎙️ إدارة الرومات</button>
+                    <button type="button" data-panel-target="audit">📋 سجل التدقيق</button>
                     <button type="button" data-panel-target="monitor">🛰️ المراقبة</button>
                 </nav>
 
@@ -1392,39 +1401,34 @@ app.get('/', (req, res) => {
                 </div>
 
                 <div class="grid panel" data-panel="dm">
-                    <div class="card">
-                        <h3>💬 محادثات الخاص</h3>
-                        <div class="form-group">
-                            <label>👤 ID الشخص</label>
-                            <input type="text" id="dmUserId" placeholder="أدخل ID الشخص">
-                        </div>
-                        <div class="form-group">
-                            <label>⏰ الفترة الزمنية</label>
-                            <select id="dmTimeRange">
-                                <option value="all">المحادثة كاملة</option>
-                                <option value="last_hour">آخر ساعة</option>
-                                <option value="last_6_hours">آخر 6 ساعات</option>
-                            </select>
-                        </div>
-                        <div class="btn-group">
-                            <button type="button" class="btn btn-primary" id="dmStartBtn" onclick="startDMViewer()">🔍 فتح المحادثة</button>
-                            <button type="button" class="btn btn-success" id="dmStopBtn" onclick="stopDMViewer()" style="display:none;">⏹ إيقاف</button>
-                        </div>
-                        <div id="dmProgress" style="margin-top:16px; display:none;">
-                            <div class="stat-item">
-                                <span>الحالة</span>
-                                <span id="dmStatus">جاري التحميل...</span>
-                            </div>
-                            <div class="stat-item">
-                                <span>الرسائل المحملة</span>
-                                <span id="dmProgressText">0</span>
+                    <div class="dm-container" style="display:flex; width:100%; min-height:620px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--bg-surface); grid-column:1 / -1;">
+                        <!-- Server list (far left) -->
+                        <div class="dm-server-list" style="width:60px; background:var(--bg-deep); border-left:1px solid var(--line); display:flex; flex-direction:column; align-items:center; padding:12px 0; gap:12px; overflow-y:auto; flex-shrink:0;">
+                            <div class="dm-server-icon active" title="الرسائل الخاصة" style="width:46px; height:46px; border-radius:50%; background:linear-gradient(135deg, var(--gold), var(--gold-dim)); display:grid; place-items:center; cursor:pointer; border:2px solid var(--gold); box-shadow:0 0 12px var(--gold-glow); transition:all 0.3s;">
+                                <span style="font-size:1.3rem;">💬</span>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="card" id="dmChatCard" style="display:none;">
-                        <h3>💬 المحادثة <span id="dmChatUser" style="color:var(--gold);"></span></h3>
-                        <div id="dmChatMessages" style="max-height:600px; overflow-y:auto; padding:4px;"></div>
+                        <!-- Conversation list -->
+                        <div class="dm-conversation-list" style="width:260px; background:var(--bg-card); border-left:1px solid var(--line); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0;">
+                            <div style="padding:16px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                                <h3 style="font-size:1rem; color:var(--text-bright); font-weight:700; margin:0;">الرسائل الخاصة</h3>
+                                <button type="button" class="btn btn-primary" onclick="loadDMConversations()" style="min-width:auto; padding:8px 12px; font-size:0.8rem;">🔄</button>
+                            </div>
+                            <div id="dmConversationList" style="flex:1; overflow-y:auto; padding:8px;">
+                                <div style="text-align:center; padding:40px 20px; color:var(--text-sub);">اضغط على 🔄 لعرض المحادثات</div>
+                            </div>
+                        </div>
+
+                        <!-- Message area -->
+                        <div class="dm-message-area" style="flex:1; display:flex; flex-direction:column; background:var(--bg-surface); overflow:hidden; min-width:0;">
+                            <div id="dmMessageHeader" style="padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; min-height:56px;">
+                                <span id="dmHeaderText" style="color:var(--text-sub); font-size:0.9rem;">اختر محادثة من القائمة</span>
+                            </div>
+                            <div id="dmMessageList" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;">
+                                <div id="dmEmptyState" style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد محادثة مفتوحة</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1443,6 +1447,7 @@ app.get('/', (req, res) => {
                         </div>
                         <div class="btn-group">
                             <button type="button" class="btn btn-primary" onclick="giveRole()">✅ إعطاء الرتبة</button>
+                            <button type="button" class="btn btn-danger" onclick="removeRole()">❌ إزالة الرتبة</button>
                             <button type="button" class="btn btn-warning" onclick="loadRolesForEdit()">⚙️ تعديل الرتب</button>
                         </div>
                     </div>
@@ -1542,6 +1547,23 @@ app.get('/', (req, res) => {
                     <div class="card" id="voiceOverridesCard" style="display:none;">
                         <h3>📋 الصلاحيات الحالية</h3>
                         <div id="voiceOverridesList" style="display:flex; flex-direction:column; gap:10px;"></div>
+                    </div>
+                </div>
+
+                <div class="grid panel" data-panel="audit">
+                    <div class="card">
+                        <h3>📋 سجل التدقيق</h3>
+                        <div class="form-group">
+                            <label>📊 عدد السجلات</label>
+                            <input type="number" id="auditLogCount" min="1" max="100" value="25" placeholder="مثال: 25">
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="loadAuditLog()" style="width:100%;">🔍 عرض سجل التدقيق</button>
+                    </div>
+
+                    <div class="card" id="auditLogCard" style="display:none;">
+                        <h3>📋 سجل التدقيق <span id="auditLogCountDisplay" style="color:var(--gold);"></span></h3>
+                        <p style="color:var(--text-sub); font-size:0.85rem; margin-bottom:14px;">ملاحظة: سجلات التدقيق لا يمكن حذفها عبر API، ولكن يمكن عرضها هنا</p>
+                        <div id="auditLogList" style="display:flex; flex-direction:column; gap:10px; max-height:600px; overflow-y:auto;"></div>
                     </div>
                 </div>
 
@@ -2175,6 +2197,180 @@ app.get('/', (req, res) => {
                     });
                 }
 
+                function removeRole() {
+                    const userId = document.getElementById('roleUserId').value.trim();
+                    const roleId = document.getElementById('roleSelect').value;
+                    if (!userId || !roleId) {
+                        alert('❌ أدخل ID الشخص واختر رتبة');
+                        return;
+                    }
+                    if (!confirm('هل أنت متأكد من إزالة هذه الرتبة من العضو؟')) return;
+                    fetch('/api/roles/remove', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, roleId })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تمت العملية');
+                    });
+                }
+
+                let currentDMChannelId = null;
+
+                function loadDMConversations() {
+                    const list = document.getElementById('dmConversationList');
+                    list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري التحميل...</div>';
+
+                    fetch('/api/dm/conversations')
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.success || !data.conversations || data.conversations.length === 0) {
+                                list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد محادثات خاصة</div>';
+                                return;
+                            }
+
+                            list.innerHTML = '';
+                            data.conversations.forEach(conv => {
+                                const item = document.createElement('div');
+                                item.className = 'dm-conversation-item';
+                                item.dataset.channelId = conv.id;
+                                item.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line); background:var(--bg-card); border-radius:6px; cursor:pointer; transition:all 0.3s; margin-bottom:6px;';
+                                item.innerHTML =
+                                    '<div style="width:36px; height:36px; border-radius:50%; background:var(--bg-elevated); display:grid; place-items:center; flex-shrink:0; overflow:hidden;">' +
+                                        (conv.recipientAvatar ? '<img src="' + conv.recipientAvatar + '" style="width:100%; height:100%; object-fit:cover;">' : '<span style="font-size:1rem;">👤</span>') +
+                                    '</div>' +
+                                    '<div style="flex:1; min-width:0;">' +
+                                        '<div style="font-weight:600; color:var(--text-bright); font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(conv.recipientName || conv.recipientTag || 'غير معروف') + '</div>' +
+                                        '<div style="font-size:0.78rem; color:var(--text-sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(conv.lastMessageContent || 'لا توجد رسائل') + '</div>' +
+                                    '</div>';
+                                item.addEventListener('click', () => openConversation(conv));
+                                item.addEventListener('mouseenter', () => {
+                                    item.style.borderColor = 'var(--gold-dim)';
+                                    item.style.background = 'var(--bg-card-hover)';
+                                });
+                                item.addEventListener('mouseleave', () => {
+                                    item.style.borderColor = 'var(--line)';
+                                    item.style.background = 'var(--bg-card)';
+                                });
+                                list.appendChild(item);
+                            });
+                        })
+                        .catch(() => {
+                            list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">❌ خطأ في تحميل المحادثات</div>';
+                        });
+                }
+
+                function openConversation(conv) {
+                    currentDMChannelId = conv.id;
+                    document.getElementById('dmEmptyState').style.display = 'none';
+                    document.getElementById('dmMessageHeader').style.display = 'flex';
+                    document.getElementById('dmHeaderText').innerHTML =
+                        '<div style="width:32px; height:32px; border-radius:50%; background:var(--bg-elevated); display:grid; place-items:center; overflow:hidden; flex-shrink:0;">' +
+                            (conv.recipientAvatar ? '<img src="' + conv.recipientAvatar + '" style="width:100%; height:100%; object-fit:cover;">' : '<span>👤</span>') +
+                        '</div>' +
+                        '<span style="font-weight:600; color:var(--text-bright);">' + escapeHtml(conv.recipientName || conv.recipientTag || 'غير معروف') + '</span>';
+
+                    loadDMMessages(conv.id);
+                }
+
+                function loadDMMessages(channelId) {
+                    const list = document.getElementById('dmMessageList');
+                    list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري تحميل الرسائل...</div>';
+
+                    fetch('/api/dm/messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channelId, limit: 50 })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.success || !data.messages || data.messages.length === 0) {
+                            list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد رسائل</div>';
+                            return;
+                        }
+
+                        list.innerHTML = '';
+                        data.messages.forEach(msg => {
+                            const item = document.createElement('div');
+                            item.className = 'monitor-message';
+                            let contentHtml = '<div class="msg-time">' + formatTime(msg.time) + ' - ' + (msg.isBot ? '🤖 البوت' : '👤 ' + escapeHtml(msg.authorName)) + '</div>';
+                            contentHtml += '<div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
+
+                            if (msg.attachments && msg.attachments.length > 0) {
+                                msg.attachments.forEach(att => {
+                                    if (att.contentType && att.contentType.startsWith('image/')) {
+                                        contentHtml += '<div style="margin-top:8px;"><img src="' + att.url + '" style="max-width:300px; max-height:300px; border-radius:8px; border:1px solid var(--line);" loading="lazy"></div>';
+                                    } else if (att.contentType && att.contentType.startsWith('audio/') || (att.name && att.name.endsWith('.ogg'))) {
+                                        contentHtml += '<div style="margin-top:8px;"><audio controls src="' + att.url + '" style="max-width:300px;"></audio></div>';
+                                    } else {
+                                        contentHtml += '<div style="margin-top:8px;"><a href="' + att.url + '" target="_blank" style="color:var(--gold);">📎 ' + escapeHtml(att.name || 'ملف') + '</a></div>';
+                                    }
+                                });
+                            }
+
+                            if (msg.embeds && msg.embeds.length > 0) {
+                                msg.embeds.forEach(embed => {
+                                    if (embed.title) {
+                                        contentHtml += '<div style="margin-top:8px; font-weight:600; color:var(--gold-bright);">' + escapeHtml(embed.title) + '</div>';
+                                    }
+                                    if (embed.description) {
+                                        contentHtml += '<div style="margin-top:4px; color:var(--text-soft);">' + escapeHtml(embed.description) + '</div>';
+                                    }
+                                });
+                            }
+
+                            item.innerHTML = contentHtml;
+                            list.appendChild(item);
+                        });
+                        list.scrollTop = list.scrollHeight;
+                    })
+                    .catch(() => {
+                        list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">❌ خطأ في تحميل الرسائل</div>';
+                    });
+                }
+
+                function loadAuditLog() {
+                    const count = document.getElementById('auditLogCount').value || 25;
+                    const list = document.getElementById('auditLogList');
+                    list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري التحميل...</div>';
+                    document.getElementById('auditLogCard').style.display = 'block';
+                    document.getElementById('auditLogCountDisplay').textContent = '(' + count + ' سجل)';
+
+                    fetch('/api/audit-log?count=' + encodeURIComponent(count))
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.success || !data.entries || data.entries.length === 0) {
+                                list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد سجلات تدقيق</div>';
+                                return;
+                            }
+
+                            list.innerHTML = '';
+                            data.entries.forEach(entry => {
+                                const item = document.createElement('div');
+                                item.className = 'monitor-message';
+                                const date = entry.createdAt ? formatTime(entry.createdAt) : '—';
+                                let changesHtml = '';
+                                if (entry.changes && entry.changes.length > 0) {
+                                    changesHtml = '<div style="margin-top:6px; font-size:0.8rem; color:var(--text-soft);">';
+                                    entry.changes.forEach(c => {
+                                        changesHtml += '<div>• ' + escapeHtml(c.key) + ': ' + escapeHtml(JSON.stringify(c.old)) + ' &larr; ' + escapeHtml(JSON.stringify(c.new)) + '</div>';
+                                    });
+                                    changesHtml += '</div>';
+                                }
+                                item.innerHTML =
+                                    '<div class="msg-time">' + date + ' | ' + escapeHtml(entry.action) + '</div>' +
+                                    '<div class="msg-content">' +
+                                        '<strong>الهدف:</strong> ' + escapeHtml(entry.targetTag) + '<br>' +
+                                        '<strong>المنفذ:</strong> ' + escapeHtml(entry.executorTag) + (entry.reason ? '<br><strong>السبب:</strong> ' + escapeHtml(entry.reason) : '') +
+                                        changesHtml +
+                                    '</div>';
+                                list.appendChild(item);
+                            });
+                        })
+                        .catch(() => {
+                            list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">❌ خطأ في تحميل السجل</div>';
+                        });
+                }
+
                 let currentVoiceChannelId = null;
                 const VOICE_PERMS_LIST = [
                     { key: 'CONNECT', label: 'الاتصال بالروم' },
@@ -2287,7 +2483,7 @@ app.get('/', (req, res) => {
                     }).then(r => r.json()).then(data => {
                         alert(data.message || '✅ تم الحفظ');
                         if (data.success) {
-                            document.getElementById('voiceChannelName').textContent = name || data.channel?.name || '';
+                            loadVoiceChannel();
                         }
                     });
                 }
@@ -2539,6 +2735,45 @@ app.get('/api/dm/result', (req, res) => {
     });
 });
 
+app.get('/api/dm/conversations', async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, conversations: [] });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('dmConversationsResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('dmConversationsResult', onDone);
+        global.botEmitter.emit('getDMConversations');
+    });
+
+    res.json(result || { success: false, conversations: [] });
+});
+
+app.post('/api/dm/messages', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, messages: [], channelId: null });
+    }
+
+    const { channelId, limit = 50 } = req.body || {};
+    if (!channelId) {
+        return res.json({ success: false, messages: [], channelId: null });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('dmMessagesResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('dmMessagesResult', onDone);
+        global.botEmitter.emit('getDMMessages', { channelId, limit });
+    });
+
+    res.json(result || { success: false, messages: [], channelId });
+});
+
 app.get('/api/roles', async (req, res) => {
     if (!global.botEmitter) {
         return res.json({ success: false, message: '⚠️ البوت غير متاح' });
@@ -2620,6 +2855,28 @@ app.post('/api/roles/delete', express.json(), async (req, res) => {
     });
 
     res.json(result || { success: false, message: '⚠️ لم يتم حذف الرتبة' });
+});
+
+app.post('/api/roles/remove', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const { userId, roleId } = req.body || {};
+    if (!userId || !roleId) {
+        return res.json({ success: false, message: '⚠️ يجب إدخال ID الشخص والرتبة' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('removeRoleResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('removeRoleResult', onDone);
+        global.botEmitter.emit('removeRole', { userId, roleId });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم تنفيذ العملية' });
 });
 
 app.get('/api/voice/channel', async (req, res) => {
@@ -2708,6 +2965,25 @@ app.post('/api/voice/permissions/remove', express.json(), async (req, res) => {
     });
 
     res.json(result || { success: false, message: '⚠️ لم يتم إزالة الصلاحيات' });
+});
+
+app.get('/api/audit-log', async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح', entries: [] });
+    }
+
+    const count = Math.min(Math.max(Number(req.query.count) || 25, 1), 100);
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('auditLogResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('auditLogResult', onDone);
+        global.botEmitter.emit('getAuditLog', { count });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم جلب سجل التدقيق', entries: [] });
 });
 
 app.post('/api/update-tasks-config', (req, res) => {

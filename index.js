@@ -600,6 +600,104 @@ global.botEmitter.on('fetchDMHistory', async ({ userId, timeRange }) => {
     }
 });
 
+global.botEmitter.on('getDMConversations', async () => {
+    try {
+        if (!client.user) {
+            if (global.botEmitter) global.botEmitter.emit('dmConversationsResult', { success: false, conversations: [] });
+            return;
+        }
+
+        const dmChannels = client.channels.cache.filter(ch => ch.type === 'DM');
+        const conversations = [];
+
+        for (const channel of dmChannels.values()) {
+            const recipient = channel.recipient;
+            if (!recipient) continue;
+
+            let lastMessage = null;
+            try {
+                const messages = await channel.messages.fetch({ limit: 1 });
+                if (messages.size > 0) {
+                    lastMessage = messages.first();
+                }
+            } catch (e) {
+                // ignore fetch errors
+            }
+
+            conversations.push({
+                id: channel.id,
+                recipientId: recipient.id,
+                recipientName: recipient.username,
+                recipientTag: recipient.tag,
+                recipientAvatar: recipient.avatarURL ? recipient.avatarURL({ dynamic: true, size: 128 }) : null,
+                lastMessageAt: lastMessage ? lastMessage.createdAt.toISOString() : null,
+                lastMessageContent: lastMessage ? lastMessage.content : '',
+                lastMessageId: lastMessage ? lastMessage.id : null
+            });
+        }
+
+        conversations.sort((a, b) => {
+            if (!a.lastMessageAt) return 1;
+            if (!b.lastMessageAt) return -1;
+            return new Date(b.lastMessageAt) - new Date(a.lastMessageAt);
+        });
+
+        if (global.botEmitter) global.botEmitter.emit('dmConversationsResult', { success: true, conversations });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('dmConversationsResult', { success: false, message: '❌ خطأ: ' + e.message, conversations: [] });
+    }
+});
+
+global.botEmitter.on('getDMMessages', async ({ channelId, limit = 50 }) => {
+    try {
+        if (!client.user) {
+            if (global.botEmitter) global.botEmitter.emit('dmMessagesResult', { success: false, messages: [], channelId });
+            return;
+        }
+
+        const channel = client.channels.cache.get(channelId);
+        if (!channel || channel.type !== 'DM') {
+            if (global.botEmitter) global.botEmitter.emit('dmMessagesResult', { success: false, message: '⚠️ قناة المحادثة غير موجودة', messages: [], channelId });
+            return;
+        }
+
+        const parsedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+        const messages = await channel.messages.fetch({ limit: parsedLimit });
+        const msgs = Array.from(messages.values()).map(msg => ({
+            id: msg.id,
+            content: msg.content || '',
+            timestamp: msg.createdTimestamp,
+            time: new Date(msg.createdTimestamp).toISOString(),
+            authorId: msg.author.id,
+            authorName: msg.author.username + (msg.author.discriminator && msg.author.discriminator !== '0' ? '#' + msg.author.discriminator : ''),
+            authorAvatar: msg.author.avatarURL ? msg.author.avatarURL({ dynamic: true, size: 64 }) : null,
+            isBot: msg.author.bot || false,
+            attachments: (msg.attachments || []).map(att => ({
+                id: att.id,
+                url: att.url || att.proxyURL,
+                name: att.name,
+                size: att.size,
+                contentType: att.contentType,
+                width: att.width,
+                height: att.height
+            })),
+            embeds: (msg.embeds || []).map(embed => ({
+                title: embed.title,
+                description: embed.description,
+                url: embed.url,
+                color: embed.color ? '#' + embed.color.toString(16).padStart(6, '0') : null
+            })),
+            reactions: msg.reactions ? msg.reactions.cache.size : 0
+        }));
+
+        msgs.sort((a, b) => a.timestamp - b.timestamp);
+
+        if (global.botEmitter) global.botEmitter.emit('dmMessagesResult', { success: true, messages: msgs, channelId });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('dmMessagesResult', { success: false, message: '❌ خطأ: ' + e.message, messages: [], channelId });
+    }
+});
+
 const replyChatStatus = () => {
     return [
         `🔹 البوت: ${isBotRunning ? 'مفعّل' : 'موقف'}`,
@@ -1061,6 +1159,42 @@ global.botEmitter.on('giveRole', async ({ userId, roleId }) => {
     }
 });
 
+global.botEmitter.on('removeRole', async ({ userId, roleId }) => {
+    try {
+        if (!config.guildId) {
+            if (global.botEmitter) global.botEmitter.emit('removeRoleResult', { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' });
+            return;
+        }
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) {
+            if (global.botEmitter) global.botEmitter.emit('removeRoleResult', { success: false, message: '⚠️ السيرفر غير موجود' });
+            return;
+        }
+
+        const member = guild.members.cache.get(userId);
+        if (!member) {
+            if (global.botEmitter) global.botEmitter.emit('removeRoleResult', { success: false, message: '⚠️ العضو غير موجود في السيرفر' });
+            return;
+        }
+
+        const role = guild.roles.cache.get(roleId);
+        if (!role) {
+            if (global.botEmitter) global.botEmitter.emit('removeRoleResult', { success: false, message: '⚠️ الرتبة غير موجودة' });
+            return;
+        }
+
+        if (!member.roles.cache.has(roleId)) {
+            if (global.botEmitter) global.botEmitter.emit('removeRoleResult', { success: false, message: '⚠️ العضو لا يمتلك هذه الرتبة' });
+            return;
+        }
+
+        await member.roles.remove(role);
+        if (global.botEmitter) global.botEmitter.emit('removeRoleResult', { success: true, message: '✅ تمت إزالة الرتبة بنجاح' });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('removeRoleResult', { success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
 global.botEmitter.on('editRole', async ({ roleId, name, color, hoist, mentionable, permissions }) => {
     try {
         if (!config.guildId) {
@@ -1115,6 +1249,44 @@ global.botEmitter.on('deleteRole', async ({ roleId }) => {
         if (global.botEmitter) global.botEmitter.emit('deleteRoleResult', { success: true, message: '✅ تم حذف الرتبة بنجاح' });
     } catch (e) {
         if (global.botEmitter) global.botEmitter.emit('deleteRoleResult', { success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
+global.botEmitter.on('getAuditLog', async ({ count = 25 }) => {
+    try {
+        if (!config.guildId) {
+            if (global.botEmitter) global.botEmitter.emit('auditLogResult', { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر', entries: [] });
+            return;
+        }
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) {
+            if (global.botEmitter) global.botEmitter.emit('auditLogResult', { success: false, message: '⚠️ السيرفر غير موجود', entries: [] });
+            return;
+        }
+
+        const limit = Math.min(Math.max(Number(count) || 25, 1), 100);
+        const auditLog = await guild.fetchAuditLogs({ limit });
+        const entries = auditLog.entries.map(entry => ({
+            id: entry.id,
+            actionType: entry.actionType,
+            action: entry.action ? entry.action.toString() : 'unknown',
+            targetId: entry.target?.id || null,
+            targetTag: entry.target?.tag || entry.target?.username || 'غير معروف',
+            executorId: entry.executor?.id || null,
+            executorTag: entry.executor?.tag || entry.executor?.username || 'غير معروف',
+            executorAvatar: entry.executor?.avatarURL ? entry.executor.avatarURL({ dynamic: true, size: 64 }) : null,
+            reason: entry.reason || '',
+            createdAt: entry.createdAt ? entry.createdAt.toISOString() : null,
+            changes: entry.changes ? entry.changes.map(c => ({
+                key: c.key,
+                old: c.old,
+                new: c.new
+            })) : []
+        }));
+
+        if (global.botEmitter) global.botEmitter.emit('auditLogResult', { success: true, entries, count: entries.length });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('auditLogResult', { success: false, message: '❌ خطأ: ' + e.message, entries: [] });
     }
 });
 
