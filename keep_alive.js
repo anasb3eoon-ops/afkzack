@@ -1935,8 +1935,6 @@ app.get('/', (req, res) => {
                 }
 
                 (function setupNumWraps() {
-
-                (function setupNumWraps() {
                     const upSvg = '<svg viewBox="0 0 24 24"><path d="M12 6l-7 8h14z"/></svg>';
                     const downSvg = '<svg viewBox="0 0 24 24"><path d="M12 18l-7-8h14z"/></svg>';
 
