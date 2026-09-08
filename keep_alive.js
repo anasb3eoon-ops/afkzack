@@ -1485,6 +1485,66 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
+                <div class="grid panel" data-panel="voice">
+                    <div class="card">
+                        <h3>🎙️ إدارة الروم الصوتي</h3>
+                        <div class="form-group">
+                            <label>🔊 ID الروم الصوتي</label>
+                            <input type="text" id="voiceChannelId" placeholder="أدخل ID الروم الصوتي">
+                        </div>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-primary" onclick="loadVoiceChannel()">🔍 فتح الروم</button>
+                        </div>
+                    </div>
+
+                    <div class="card" id="voiceChannelCard" style="display:none;">
+                        <h3>🎙️ إعدادات الروم <span id="voiceChannelName" style="color:var(--gold);"></span></h3>
+                        <form id="voiceChannelForm" onsubmit="saveVoiceChannelSettings(event)">
+                            <div class="form-group">
+                                <label>اسم الروم</label>
+                                <input type="text" id="voiceChannelNameInput">
+                            </div>
+                            <div class="form-group">
+                                <label>الحد الأقصى للمستخدمين (0 = بلا حد)</label>
+                                <input type="number" id="voiceUserLimit" min="0" max="99" value="0">
+                            </div>
+                            <div class="form-group">
+                                <label>معدل البث (bits per second)</label>
+                                <input type="number" id="voiceBitrate" min="8000" max="96000" step="1000" value="64000">
+                            </div>
+                            <button type="submit" class="btn btn-primary">💾 حفظ الإعدادات</button>
+                        </form>
+                    </div>
+
+                    <div class="card" id="voicePermissionsCard" style="display:none;">
+                        <h3>🔐 صلاحيات الروم</h3>
+                        <div class="form-group">
+                            <label>➕ إضافة صلاحية جديدة</label>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <input type="text" id="voicePermTargetId" placeholder="ID الشخص أو الرتبة" style="flex:1; min-width:200px;">
+                                <select id="voicePermType" style="width:auto;">
+                                    <option value="member">عضو</option>
+                                    <option value="role">رتبة</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>الصلاحيات المسموحة</label>
+                            <div id="voiceAllowPerms" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; max-height:200px; overflow-y:auto; padding:10px; border:1px solid var(--line); background:rgba(0,0,0,0.2); border-radius:8px;"></div>
+                        </div>
+                        <div class="form-group">
+                            <label>الصلاحيات المرفوضة</label>
+                            <div id="voiceDenyPerms" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; max-height:200px; overflow-y:auto; padding:10px; border:1px solid var(--line); background:rgba(0,0,0,0.2); border-radius:8px;"></div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="saveVoicePermissions()" style="margin-top:12px;">💾 حفظ الصلاحيات</button>
+                    </div>
+
+                    <div class="card" id="voiceOverridesCard" style="display:none;">
+                        <h3>📋 الصلاحيات الحالية</h3>
+                        <div id="voiceOverridesList" style="display:flex; flex-direction:column; gap:10px;"></div>
+                    </div>
+                </div>
+
                 <div class="grid panel" data-panel="monitor">
                     <div class="card">
                         <h3>🛰️ مراقبة نشاط المستخدم</h3>
@@ -2115,6 +2175,143 @@ app.get('/', (req, res) => {
                     });
                 }
 
+                let currentVoiceChannelId = null;
+                const VOICE_PERMS_LIST = [
+                    { key: 'CONNECT', label: 'الاتصال بالروم' },
+                    { key: 'SPEAK', label: 'التحدث' },
+                    { key: 'STREAM', label: 'البث' },
+                    { key: 'USE_VAD', label: 'كشف النشاط' },
+                    { key: 'PRIORITY_SPEAKER', label: 'متحدث متميز' },
+                    { key: 'MUTE_MEMBERS', label: 'كتم الأعضاء' },
+                    { key: 'DEAFEN_MEMBERS', label: 'تعطيل صوت الأعضاء' },
+                    { key: 'MOVE_MEMBERS', label: 'نقل الأعضاء' },
+                    { key: 'MANAGE_CHANNELS', label: 'إدارة القنوات' },
+                    { key: 'MANAGE_ROLES', label: 'إدارة الرتب' },
+                    { key: 'VIEW_CHANNEL', label: 'عرض القناة' }
+                ];
+
+                function renderVoicePermCheckboxes(containerId, checkedKeys) {
+                    const container = document.getElementById(containerId);
+                    container.innerHTML = '';
+                    const checked = new Set(checkedKeys || []);
+                    VOICE_PERMS_LIST.forEach(perm => {
+                        const item = document.createElement('div');
+                        item.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px;';
+                        item.innerHTML = '<input type="checkbox" data-voice-perm="' + perm.key + '" ' + (checked.has(perm.key) ? 'checked' : '') + ' style="width:16px; height:16px; cursor:pointer;"><label style="margin:0; cursor:pointer; font-size:0.85rem;">' + perm.label + '</label>';
+                        container.appendChild(item);
+                    });
+                }
+
+                function getSelectedVoicePerms(containerId) {
+                    return Array.from(document.querySelectorAll('#' + containerId + ' input[type="checkbox"]:checked')).map(chk => chk.dataset.voicePerm);
+                }
+
+                function loadVoiceChannel() {
+                    const channelId = document.getElementById('voiceChannelId').value.trim();
+                    if (!channelId) {
+                        alert('❌ أدخل ID الروم الصوتي');
+                        return;
+                    }
+                    currentVoiceChannelId = channelId;
+                    fetch('/api/voice/channel?channelId=' + encodeURIComponent(channelId))
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.success) {
+                                alert(data.message || '❌ خطأ في جلب بيانات الروم');
+                                return;
+                            }
+                            const ch = data.channel;
+                            document.getElementById('voiceChannelCard').style.display = 'block';
+                            document.getElementById('voiceChannelName').textContent = ch.name;
+                            document.getElementById('voiceChannelNameInput').value = ch.name;
+                            document.getElementById('voiceUserLimit').value = ch.userLimit || 0;
+                            document.getElementById('voiceBitrate').value = ch.bitrate || 64000;
+                            document.getElementById('voicePermissionsCard').style.display = 'block';
+                            document.getElementById('voiceOverridesCard').style.display = 'block';
+                            renderVoicePermCheckboxes('voiceAllowPerms', []);
+                            renderVoicePermCheckboxes('voiceDenyPerms', []);
+                            renderVoiceOverrides(ch.permissionOverwrites || []);
+                        });
+                }
+
+                function renderVoiceOverrides(overwrites) {
+                    const list = document.getElementById('voiceOverridesList');
+                    list.innerHTML = '';
+                    if (!overwrites || overwrites.length === 0) {
+                        list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-sub);">لا توجد صلاحيات مخصصة</div>';
+                        return;
+                    }
+                    overwrites.forEach(ow => {
+                        const item = document.createElement('div');
+                        item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border:1px solid var(--line); background:var(--bg-card); border-radius:6px;';
+                        const allowPerms = Object.entries(ow.allowPermissions || {}).filter(([k, v]) => v).map(([k]) => k);
+                        const denyPerms = Object.entries(ow.denyPermissions || {}).filter(([k, v]) => v).map(([k]) => k);
+                        const permsText = [];
+                        if (allowPerms.length > 0) permsText.push('✅ ' + allowPerms.join(', '));
+                        if (denyPerms.length > 0) permsText.push('❌ ' + denyPerms.join(', '));
+                        item.innerHTML = '<div style="flex:1; min-width:0;"><div style="font-weight:700; color:var(--text-bright); margin-bottom:6px;">' + escapeHtml(ow.id) + ' <span style="font-size:0.75rem; color:var(--text-sub);">(' + (ow.type === 'role' ? 'رتبة' : 'عضو') + ')</span></div><div style="font-size:0.8rem; color:var(--text-soft);">' + (permsText.length > 0 ? escapeHtml(permsText.join(' | ')) : 'بدون صلاحيات مخصصة') + '</div></div><button type="button" class="btn btn-danger" style="flex:0 0 auto; min-width:auto; padding:6px 12px; font-size:0.8rem;" onclick="removeVoicePermission(\'' + ow.id + '\')">🗑️ إزالة</button>';
+                        list.appendChild(item);
+                    });
+                }
+
+                function saveVoiceChannelSettings(event) {
+                    event.preventDefault();
+                    if (!currentVoiceChannelId) return;
+                    const name = document.getElementById('voiceChannelNameInput').value.trim();
+                    const userLimit = document.getElementById('voiceUserLimit').value;
+                    const bitrate = document.getElementById('voiceBitrate').value;
+                    fetch('/api/voice/channel', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channelId: currentVoiceChannelId, name, userLimit, bitrate })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم الحفظ');
+                        if (data.success) {
+                            document.getElementById('voiceChannelName').textContent = name || data.channel?.name || '';
+                        }
+                    });
+                }
+
+                function saveVoicePermissions() {
+                    if (!currentVoiceChannelId) return;
+                    const targetId = document.getElementById('voicePermTargetId').value.trim();
+                    const targetType = document.getElementById('voicePermType').value;
+                    if (!targetId) {
+                        alert('❌ أدخل ID الهدف');
+                        return;
+                    }
+                    const allow = getSelectedVoicePerms('voiceAllowPerms');
+                    const deny = getSelectedVoicePerms('voiceDenyPerms');
+                    fetch('/api/voice/permissions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channelId: currentVoiceChannelId, targetId, targetType, allow, deny })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم الحفظ');
+                        if (data.success) {
+                            document.getElementById('voicePermTargetId').value = '';
+                            renderVoicePermCheckboxes('voiceAllowPerms', []);
+                            renderVoicePermCheckboxes('voiceDenyPerms', []);
+                            loadVoiceChannel();
+                        }
+                    });
+                }
+
+                function removeVoicePermission(targetId) {
+                    if (!currentVoiceChannelId) return;
+                    if (!confirm('هل أنت متأكد من إزالة صلاحيات هذا الهدف؟')) return;
+                    fetch('/api/voice/permissions/remove', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channelId: currentVoiceChannelId, targetId })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم الإزالة');
+                        if (data.success) {
+                            loadVoiceChannel();
+                        }
+                    });
+                }
+
                 function escapeHtml(text) {
                     const div = document.createElement('div');
                     div.textContent = text;
@@ -2423,6 +2620,94 @@ app.post('/api/roles/delete', express.json(), async (req, res) => {
     });
 
     res.json(result || { success: false, message: '⚠️ لم يتم حذف الرتبة' });
+});
+
+app.get('/api/voice/channel', async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const channelId = (req.query.channelId || '').trim();
+    if (!channelId) {
+        return res.json({ success: false, message: '⚠️ يجب إدخال ID الروم' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('voiceChannelResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('voiceChannelResult', onDone);
+        global.botEmitter.emit('getVoiceChannel', { channelId }, onDone);
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم جلب بيانات الروم' });
+});
+
+app.post('/api/voice/channel', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const { channelId, name, userLimit, bitrate } = req.body || {};
+    if (!channelId) {
+        return res.json({ success: false, message: '⚠️ يجب تحديد الروم' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('updateVoiceChannelResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('updateVoiceChannelResult', onDone);
+        global.botEmitter.emit('updateVoiceChannel', { channelId, name, userLimit, bitrate });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم تحديث الروم' });
+});
+
+app.post('/api/voice/permissions', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const { channelId, targetId, targetType, allow, deny } = req.body || {};
+    if (!channelId || !targetId) {
+        return res.json({ success: false, message: '⚠️ يجب تحديد الروم والهدف' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('updateVoicePermissionsResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('updateVoicePermissionsResult', onDone);
+        global.botEmitter.emit('updateVoicePermissions', { channelId, targetId, targetType, allow, deny });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم تحديث الصلاحيات' });
+});
+
+app.post('/api/voice/permissions/remove', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const { channelId, targetId } = req.body || {};
+    if (!channelId || !targetId) {
+        return res.json({ success: false, message: '⚠️ يجب تحديد الروم والهدف' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('removeVoicePermissionResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('removeVoicePermissionResult', onDone);
+        global.botEmitter.emit('removeVoicePermission', { channelId, targetId });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم إزالة الصلاحيات' });
 });
 
 app.post('/api/update-tasks-config', (req, res) => {

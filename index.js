@@ -1118,6 +1118,154 @@ global.botEmitter.on('deleteRole', async ({ roleId }) => {
     }
 });
 
+const VOICE_PERMISSIONS = [
+    { key: 'CONNECT', label: 'الاتصال بالروم', flag: 0x100000 },
+    { key: 'SPEAK', label: 'التحدث', flag: 0x200000 },
+    { key: 'STREAM', label: 'البث', flag: 0x400000 },
+    { key: 'USE_VAD', label: 'كشف النشاط', flag: 0x800000 },
+    { key: 'PRIORITY_SPEAKER', label: 'متحدث متميز', flag: 0x100 },
+    { key: 'MUTE_MEMBERS', label: 'كتم الأعضاء', flag: 0x4000000 },
+    { key: 'DEAFEN_MEMBERS', label: 'تعطيل صوت الأعضاء', flag: 0x8000000 },
+    { key: 'MOVE_MEMBERS', label: 'نقل الأعضاء', flag: 0x10000000 },
+    { key: 'MANAGE_CHANNELS', label: 'إدارة القنوات', flag: 0x10 },
+    { key: 'MANAGE_ROLES', label: 'إدارة الرتب', flag: 0x10000000 },
+    { key: 'VIEW_CHANNEL', label: 'عرض القناة', flag: 0x400 }
+];
+
+global.botEmitter.on('getVoiceChannel', async ({ channelId }, cb) => {
+    try {
+        if (!config.guildId) {
+            if (typeof cb === 'function') cb({ success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' });
+            return;
+        }
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) {
+            if (typeof cb === 'function') cb({ success: false, message: '⚠️ السيرفر غير موجود' });
+            return;
+        }
+
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel || channel.type !== 'GUILD_VOICE') {
+            if (typeof cb === 'function') cb({ success: false, message: '⚠️ الروم الصوتي غير موجود' });
+            return;
+        }
+
+        const permissionOverwrites = (channel.permissionOverwrites || []).map(po => ({
+            id: po.id,
+            type: po.type,
+            allow: po.allow.bitfield.toString(),
+            deny: po.deny.bitfield.toString(),
+            allowPermissions: po.allow.serialize(),
+            denyPermissions: po.deny.serialize()
+        }));
+
+        const membersWithAccess = Array.from(guild.members.cache.values()).filter(m => {
+            const permissions = channel.permissionsFor(m);
+            return permissions && permissions.has('CONNECT');
+        }).map(m => ({
+            id: m.id,
+            username: m.user.username,
+            discriminator: m.user.discriminator,
+            avatar: m.user.avatarURL ? m.user.avatarURL({ dynamic: true, size: 64 }) : null
+        }));
+
+        if (typeof cb === 'function') cb({
+            success: true,
+            channel: {
+                id: channel.id,
+                name: channel.name,
+                type: channel.type,
+                userLimit: channel.userLimit,
+                bitrate: channel.bitrate,
+                position: channel.position,
+                parentId: channel.parentId,
+                permissionOverwrites,
+                membersWithAccess
+            }
+        });
+    } catch (e) {
+        if (typeof cb === 'function') cb({ success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
+global.botEmitter.on('updateVoiceChannel', async ({ channelId, name, userLimit, bitrate }) => {
+    try {
+        if (!config.guildId) return { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' };
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) return { success: false, message: '⚠️ السيرفر غير موجود' };
+
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel || channel.type !== 'GUILD_VOICE') return { success: false, message: '⚠️ الروم الصوتي غير موجود' };
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (userLimit !== undefined) updateData.userLimit = Math.max(0, Math.min(99, Number(userLimit) || 0));
+        if (bitrate !== undefined) updateData.bitrate = Math.max(8000, Math.min(96000, Number(bitrate) || 64000));
+
+        await channel.edit(updateData);
+        return { success: true, message: '✅ تم تحديث إعدادات الروم' };
+    } catch (e) {
+        return { success: false, message: '❌ خطأ: ' + e.message };
+    }
+});
+
+global.botEmitter.on('updateVoicePermissions', async ({ channelId, targetId, targetType, allow, deny }) => {
+    try {
+        if (!config.guildId) return { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' };
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) return { success: false, message: '⚠️ السيرفر غير موجود' };
+
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel || channel.type !== 'GUILD_VOICE') return { success: false, message: '⚠️ الروم الصوتي غير موجود' };
+
+        let allowBits = BigInt(0);
+        let denyBits = BigInt(0);
+
+        if (allow && Array.isArray(allow)) {
+            allow.forEach(perm => {
+                const found = VOICE_PERMISSIONS.find(p => p.key === perm);
+                if (found) allowBits = allowBits | BigInt(found.flag);
+            });
+        }
+
+        if (deny && Array.isArray(deny)) {
+            deny.forEach(perm => {
+                const found = VOICE_PERMISSIONS.find(p => p.key === perm);
+                if (found) denyBits = denyBits | BigInt(found.flag);
+            });
+        }
+
+        await channel.permissionOverwrites.edit(targetId, {
+            allow: Number(allowBits),
+            deny: Number(denyBits)
+        });
+
+        return { success: true, message: '✅ تم تحديث الصلاحيات' };
+    } catch (e) {
+        return { success: false, message: '❌ خطأ: ' + e.message };
+    }
+});
+
+global.botEmitter.on('removeVoicePermission', async ({ channelId, targetId }) => {
+    try {
+        if (!config.guildId) return { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' };
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) return { success: false, message: '⚠️ السيرفر غير موجود' };
+
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel || channel.type !== 'GUILD_VOICE') return { success: false, message: '⚠️ الروم الصوتي غير موجود' };
+
+        const overwrite = channel.permissionOverwrites.cache.get(targetId);
+        if (overwrite) {
+            await overwrite.delete();
+        }
+
+        return { success: true, message: '✅ تم إزالة الصلاحيات' };
+    } catch (e) {
+        return { success: false, message: '❌ خطأ: ' + e.message };
+    }
+});
+
 if (process.env.token) {
     client.login(process.env.token);
 } else {
