@@ -2318,26 +2318,6 @@ app.get('/', (req, res) => {
                     return div.innerHTML;
                 }
 
-                function formatTime(iso) {
-                    if (!iso) return '—';
-                    try {
-                        const d = new Date(iso);
-                        return d.toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' });
-                    } catch { return iso; }
-                }
-
-                function formatDuration(ms) {
-                    if (!ms) return '—';
-                    const s = Math.floor(ms / 1000);
-                    if (s < 60) return s + ' ثانية';
-                    const m = Math.floor(s / 60);
-                    const rs = s % 60;
-                    if (m < 60) return m + ' د ' + rs + ' ث';
-                    const h = Math.floor(m / 60);
-                    const rm = m % 60;
-                    return h + ' س ' + rm + ' د';
-                }
-
                 (function setupNumWraps() {
                     const upSvg = '<svg viewBox="0 0 24 24"><path d="M12 6l-7 8h14z"/></svg>';
                     const downSvg = '<svg viewBox="0 0 24 24"><path d="M12 18l-7-8h14z"/></svg>';
