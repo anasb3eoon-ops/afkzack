@@ -46,6 +46,7 @@ app.get('/', (req, res) => {
         <html lang="ar" dir="rtl">
         <head>
             <meta charset="UTF-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: blob:; media-src 'self' data: https: blob:; connect-src 'self' https: wss:; font-src 'self' https: data:;">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>🎮 لوحة التحكم النيون | Discord Selfbot</title>
             <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Orbitron:wght@400;700;900&family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
