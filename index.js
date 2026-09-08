@@ -78,7 +78,7 @@ const timingKeys = [
 ];
 
 let isChatActive = true;
-let isVoiceActive = true;
+let isVoiceActive = false;
 let isBotRunning = true;
 let isTaskRunning = true;
 const taskStates = { task1: false, task2: false, task3: false, task4: false, task5: false };
@@ -691,7 +691,6 @@ const startTaskLoops = () => {
 
 client.on('ready', () => {
     console.log(`✅ تم تسجيل الدخول: ${client.user.tag}`);
-    connectToVoice();
     startTaskLoops();
     startPlanBLoop();
     syncState();
