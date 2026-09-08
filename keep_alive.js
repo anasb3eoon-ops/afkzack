@@ -2249,7 +2249,27 @@ app.get('/', (req, res) => {
                         const permsText = [];
                         if (allowPerms.length > 0) permsText.push('✅ ' + allowPerms.join(', '));
                         if (denyPerms.length > 0) permsText.push('❌ ' + denyPerms.join(', '));
-                        item.innerHTML = '<div style="flex:1; min-width:0;"><div style="font-weight:700; color:var(--text-bright); margin-bottom:6px;">' + escapeHtml(ow.id) + ' <span style="font-size:0.75rem; color:var(--text-sub);">(' + (ow.type === 'role' ? 'رتبة' : 'عضو') + ')</span></div><div style="font-size:0.8rem; color:var(--text-soft);">' + (permsText.length > 0 ? escapeHtml(permsText.join(' | ')) : 'بدون صلاحيات مخصصة') + '</div></div><button type="button" class="btn btn-danger" style="flex:0 0 auto; min-width:auto; padding:6px 12px; font-size:0.8rem;" onclick="removeVoicePermission(\'' + ow.id + '\')">🗑️ إزالة</button>';
+
+                        const left = document.createElement('div');
+                        left.style.cssText = 'flex:1; min-width:0;';
+                        const title = document.createElement('div');
+                        title.style.cssText = 'font-weight:700; color:var(--text-bright); margin-bottom:6px;';
+                        title.innerHTML = escapeHtml(ow.id) + ' <span style="font-size:0.75rem; color:var(--text-sub);">(' + (ow.type === 'role' ? 'رتبة' : 'عضو') + ')</span>';
+                        const desc = document.createElement('div');
+                        desc.style.cssText = 'font-size:0.8rem; color:var(--text-soft);';
+                        desc.textContent = permsText.length > 0 ? permsText.join(' | ') : 'بدون صلاحيات مخصصة';
+                        left.appendChild(title);
+                        left.appendChild(desc);
+
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'btn btn-danger';
+                        btn.style.cssText = 'flex:0 0 auto; min-width:auto; padding:6px 12px; font-size:0.8rem;';
+                        btn.textContent = '🗑️ إزالة';
+                        btn.addEventListener('click', () => removeVoicePermission(ow.id));
+
+                        item.appendChild(left);
+                        item.appendChild(btn);
                         list.appendChild(item);
                     });
                 }
