@@ -1198,6 +1198,7 @@ app.get('/', (req, res) => {
                     <button type="button" data-panel-target="tasks">⚡ إدارة المهام</button>
                     <button type="button" data-panel-target="channels">🎙️ القنوات والرسائل</button>
                     <button type="button" data-panel-target="dm">💬 المحادثات</button>
+                    <button type="button" data-panel-target="roles">🛡️ الرتب</button>
                     <button type="button" data-panel-target="monitor">🛰️ المراقبة</button>
                 </nav>
 
@@ -1427,6 +1428,63 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
 
+                <div class="grid panel" data-panel="roles">
+                    <div class="card">
+                        <h3>🛡️ إدارة الرتب</h3>
+                        <div class="form-group">
+                            <label>👤 ID الشخص</label>
+                            <input type="text" id="roleUserId" placeholder="أدخل ID الشخص">
+                        </div>
+                        <div class="form-group">
+                            <label>🎖️ اختر الرتبة</label>
+                            <select id="roleSelect">
+                                <option value="">-- اختر رتبة --</option>
+                            </select>
+                        </div>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-primary" onclick="giveRole()">✅ إعطاء الرتبة</button>
+                            <button type="button" class="btn btn-warning" onclick="loadRolesForEdit()">⚙️ تعديل الرتب</button>
+                        </div>
+                    </div>
+
+                    <div class="card" id="roleEditCard" style="display:none;">
+                        <h3>⚙️ تعديل الرتبة <span id="editRoleName" style="color:var(--gold);"></span></h3>
+                        <form id="editRoleForm" onsubmit="saveRoleEdit(event)">
+                            <input type="hidden" id="editRoleId">
+                            <div class="form-group">
+                                <label>اسم الرتبة</label>
+                                <input type="text" id="editRoleNameInput">
+                            </div>
+                            <div class="form-group">
+                                <label>لون الرتبة</label>
+                                <input type="color" id="editRoleColor" value="#99AAB5" style="height:40px; padding:4px;">
+                            </div>
+                            <div class="form-group">
+                                <label>عرض الرتبة بشكل منفصل</label>
+                                <select id="editRoleHoist">
+                                    <option value="false">لا</option>
+                                    <option value="true">نعم</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>قابلة للذكر</label>
+                                <select id="editRoleMentionable">
+                                    <option value="false">لا</option>
+                                    <option value="true">نعم</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>الصلاحيات</label>
+                                <div id="rolePermissions" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; max-height:300px; overflow-y:auto; padding:10px; border:1px solid var(--line); background:rgba(0,0,0,0.2); border-radius:8px;"></div>
+                            </div>
+                            <div class="btn-group">
+                                <button type="submit" class="btn btn-primary">💾 حفظ التعديلات</button>
+                                <button type="button" class="btn btn-danger" onclick="deleteRole()">🗑️ حذف الرتبة</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
                 <div class="grid panel" data-panel="monitor">
                     <div class="card">
                         <h3>🛰️ مراقبة نشاط المستخدم</h3>
@@ -1550,6 +1608,10 @@ app.get('/', (req, res) => {
                             panel.classList.toggle('active', panel.getAttribute('data-panel') === target);
                         });
                         this.classList.add('active');
+
+                        if (target === 'roles') {
+                            loadRolesForEdit();
+                        }
                     });
                 });
 
@@ -1908,6 +1970,151 @@ app.get('/', (req, res) => {
                     list.scrollTop = list.scrollHeight;
                 }
 
+                let rolesCache = [];
+
+                const ROLE_PERMISSIONS = [
+                    { key: 'ADMINISTRATOR', label: 'مدير السيرفر', flag: 0x8 },
+                    { key: 'VIEW_AUDIT_LOG', label: 'عرض سجل التدقيق', flag: 0x80 },
+                    { key: 'MANAGE_SERVER', label: 'إدارة السيرفر', flag: 0x20 },
+                    { key: 'MANAGE_ROLES', label: 'إدارة الرتب', flag: 0x10000000 },
+                    { key: 'MANAGE_CHANNELS', label: 'إدارة القنوات', flag: 0x10 },
+                    { key: 'KICK_MEMBERS', label: 'طرد الأعضاء', flag: 0x2 },
+                    { key: 'BAN_MEMBERS', label: 'حظر الأعضاء', flag: 0x4 },
+                    { key: 'AUDIT_LOG', label: 'عرض سجل التدقيق', flag: 0x80 },
+                    { key: 'SEND_MESSAGES', label: 'إرسال رسائل', flag: 0x800 },
+                    { key: 'SEND_TTS_MESSAGES', label: 'إرسال رسائل صوتية', flag: 0x1000 },
+                    { key: 'MANAGE_MESSAGES', label: 'إدارة الرسائل', flag: 0x2000 },
+                    { key: 'EMBED_LINKS', label: 'تضمين الروابط', flag: 0x400 },
+                    { key: 'ATTACH_FILES', label: 'إرفاق ملفات', flag: 0x8000 },
+                    { key: 'READ_MESSAGE_HISTORY', label: 'قراءة تاريخ الرسائل', flag: 0x10000 },
+                    { key: 'MENTION_EVERYONE', label: 'منشن للكل', flag: 0x20000 },
+                    { key: 'USE_EXTERNAL_EMOJIS', label: 'إيموجي خارجي', flag: 0x40000 },
+                    { key: 'ADD_REACTIONS', label: 'إضافة تفاعلات', flag: 0x40 },
+                    { key: 'CONNECT', label: 'التحدث في الصوت', flag: 0x100000 },
+                    { key: 'SPEAK', label: 'التحدث', flag: 0x200000 },
+                    { key: 'STREAM', label: 'البث', flag: 0x400000 },
+                    { key: 'USE_VAD', label: 'كشف النشاط', flag: 0x800000 },
+                    { key: 'PRIORITY_SPEAKER', label: 'متحدث متميز', flag: 0x100 },
+                    { key: 'VIEW_CHANNEL', label: 'عرض القنوات', flag: 0x400 }
+                ];
+
+                function renderRolePermissions(bitfield) {
+                    const container = document.getElementById('rolePermissions');
+                    container.innerHTML = '';
+                    const perms = BigInt(bitfield || 0);
+
+                    ROLE_PERMISSIONS.forEach(perm => {
+                        const flag = BigInt(perm.flag);
+                        const checked = (perms & flag) === flag;
+                        const item = document.createElement('div');
+                        item.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px;';
+                        item.innerHTML = '<input type="checkbox" data-perm="' + perm.key + '" data-flag="' + perm.flag + '" ' + (checked ? 'checked' : '') + ' style="width:16px; height:16px; cursor:pointer;"><label style="margin:0; cursor:pointer; font-size:0.85rem;">' + perm.label + '</label>';
+                        container.appendChild(item);
+                    });
+                }
+
+                function loadRolesForEdit() {
+                    fetch('/api/roles')
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.success) {
+                                alert(data.message || '❌ خطأ في جلب الرتب');
+                                return;
+                            }
+
+                            rolesCache = data.roles || [];
+                            const select = document.getElementById('roleSelect');
+                            select.innerHTML = '<option value="">-- اختر رتبة للتعديل --</option>';
+                            rolesCache.forEach(role => {
+                                const option = document.createElement('option');
+                                option.value = role.id;
+                                option.textContent = role.name + (role.managed ? ' (نظام)' : '') + ' - ' + role.membersCount + ' عضو';
+                                select.appendChild(option);
+                            });
+
+                            document.getElementById('roleSelect').onchange = function() {
+                                const roleId = this.value;
+                                if (!roleId) {
+                                    document.getElementById('roleEditCard').style.display = 'none';
+                                    return;
+                                }
+                                const role = rolesCache.find(r => r.id === roleId);
+                                if (!role) return;
+
+                                document.getElementById('editRoleId').value = role.id;
+                                document.getElementById('editRoleNameInput').value = role.name;
+                                document.getElementById('editRoleColor').value = role.color;
+                                document.getElementById('editRoleHoist').value = role.hoist ? 'true' : 'false';
+                                document.getElementById('editRoleMentionable').value = role.mentionable ? 'true' : 'false';
+                                document.getElementById('editRoleName').textContent = role.name;
+
+                                renderRolePermissions(role.permissions);
+                                document.getElementById('roleEditCard').style.display = 'block';
+                                document.getElementById('roleEditCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            };
+                        });
+                }
+
+                function saveRoleEdit(event) {
+                    event.preventDefault();
+                    const roleId = document.getElementById('editRoleId').value;
+                    const name = document.getElementById('editRoleNameInput').value.trim();
+                    const color = document.getElementById('editRoleColor').value;
+                    const hoist = document.getElementById('editRoleHoist').value === 'true';
+                    const mentionable = document.getElementById('editRoleMentionable').value === 'true';
+
+                    let permissions = BigInt(0);
+                    document.querySelectorAll('#rolePermissions input[type="checkbox"]').forEach(chk => {
+                        const flag = BigInt(parseInt(chk.dataset.flag || '0'));
+                        if (chk.checked) permissions = permissions | flag;
+                    });
+
+                    fetch('/api/roles/edit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ roleId, name, color, hoist, mentionable, permissions: permissions.toString() })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم الحفظ');
+                        if (data.success) {
+                            loadRolesForEdit();
+                            document.getElementById('roleEditCard').style.display = 'none';
+                        }
+                    });
+                }
+
+                function giveRole() {
+                    const userId = document.getElementById('roleUserId').value.trim();
+                    const roleId = document.getElementById('roleSelect').value;
+                    if (!userId || !roleId) {
+                        alert('❌ أدخل ID الشخص واختر رتبة');
+                        return;
+                    }
+                    fetch('/api/roles/give', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, roleId })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تمت العملية');
+                    });
+                }
+
+                function deleteRole() {
+                    const roleId = document.getElementById('editRoleId').value;
+                    if (!roleId) return;
+                    if (!confirm('هل أنت متأكد من حذف هذه الرتبة؟')) return;
+                    fetch('/api/roles/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ roleId })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم الحذف');
+                        if (data.success) {
+                            document.getElementById('roleEditCard').style.display = 'none';
+                            loadRolesForEdit();
+                        }
+                    });
+                }
+
                 function escapeHtml(text) {
                     const div = document.createElement('div');
                     div.textContent = text;
@@ -2133,6 +2340,89 @@ app.get('/api/dm/result', (req, res) => {
         timeRange: s.timeRange,
         result: s.result
     });
+});
+
+app.get('/api/roles', async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('rolesResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('rolesResult', onDone);
+        global.botEmitter.emit('getRoles', onDone);
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم جلب الرتب' });
+});
+
+app.post('/api/roles/give', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const { userId, roleId } = req.body || {};
+    if (!userId || !roleId) {
+        return res.json({ success: false, message: '⚠️ يجب إدخال ID الشخص والرتبة' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('giveRoleResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('giveRoleResult', onDone);
+        global.botEmitter.emit('giveRole', { userId, roleId });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم تنفيذ العملية' });
+});
+
+app.post('/api/roles/edit', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const { roleId, name, color, hoist, mentionable, permissions } = req.body || {};
+    if (!roleId) {
+        return res.json({ success: false, message: '⚠️ يجب تحديد الرتبة' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('editRoleResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('editRoleResult', onDone);
+        global.botEmitter.emit('editRole', { roleId, name, color, hoist, mentionable, permissions });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم تعديل الرتبة' });
+});
+
+app.post('/api/roles/delete', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+
+    const { roleId } = req.body || {};
+    if (!roleId) {
+        return res.json({ success: false, message: '⚠️ يجب تحديد الرتبة' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('deleteRoleResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('deleteRoleResult', onDone);
+        global.botEmitter.emit('deleteRole', { roleId });
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم حذف الرتبة' });
 });
 
 app.post('/api/update-tasks-config', (req, res) => {

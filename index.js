@@ -996,6 +996,128 @@ client.on('voiceStateUpdate', (oldState, newState) => {
     }
 });
 
+global.botEmitter.on('getRoles', async () => {
+    try {
+        if (!config.guildId) {
+            if (global.botEmitter) global.botEmitter.emit('rolesResult', { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' });
+            return;
+        }
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) {
+            if (global.botEmitter) global.botEmitter.emit('rolesResult', { success: false, message: '⚠️ السيرفر غير موجود' });
+            return;
+        }
+        const roles = await guild.roles.fetch();
+        const rolesList = roles.map(r => ({
+            id: r.id,
+            name: r.name,
+            color: r.hexColor,
+            position: r.position,
+            permissions: r.permissions.bitfield.toString(),
+            managed: r.managed,
+            hoist: r.hoist,
+            mentionable: r.mentionable,
+            membersCount: Array.from(guild.members.cache.values()).filter(m => m.roles.cache.has(r.id)).length
+        }));
+        if (global.botEmitter) global.botEmitter.emit('rolesResult', { success: true, roles: rolesList });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('rolesResult', { success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
+global.botEmitter.on('giveRole', async ({ userId, roleId }) => {
+    try {
+        if (!config.guildId) {
+            if (global.botEmitter) global.botEmitter.emit('giveRoleResult', { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' });
+            return;
+        }
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) {
+            if (global.botEmitter) global.botEmitter.emit('giveRoleResult', { success: false, message: '⚠️ السيرفر غير موجود' });
+            return;
+        }
+
+        const member = guild.members.cache.get(userId);
+        if (!member) {
+            if (global.botEmitter) global.botEmitter.emit('giveRoleResult', { success: false, message: '⚠️ العضو غير موجود في السيرفر' });
+            return;
+        }
+
+        const role = guild.roles.cache.get(roleId);
+        if (!role) {
+            if (global.botEmitter) global.botEmitter.emit('giveRoleResult', { success: false, message: '⚠️ الرتبة غير موجودة' });
+            return;
+        }
+
+        if (member.roles.cache.has(roleId)) {
+            if (global.botEmitter) global.botEmitter.emit('giveRoleResult', { success: false, message: '⚠️ العضو لديه هذه الرتبة بالفعل' });
+            return;
+        }
+
+        await member.roles.add(role);
+        if (global.botEmitter) global.botEmitter.emit('giveRoleResult', { success: true, message: '✅ تم إعطاء الرتبة بنجاح' });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('giveRoleResult', { success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
+global.botEmitter.on('editRole', async ({ roleId, name, color, hoist, mentionable, permissions }) => {
+    try {
+        if (!config.guildId) {
+            if (global.botEmitter) global.botEmitter.emit('editRoleResult', { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' });
+            return;
+        }
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) {
+            if (global.botEmitter) global.botEmitter.emit('editRoleResult', { success: false, message: '⚠️ السيرفر غير موجود' });
+            return;
+        }
+
+        const role = guild.roles.cache.get(roleId);
+        if (!role) {
+            if (global.botEmitter) global.botEmitter.emit('editRoleResult', { success: false, message: '⚠️ الرتبة غير موجودة' });
+            return;
+        }
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (color !== undefined) updateData.color = color;
+        if (hoist !== undefined) updateData.hoist = hoist;
+        if (mentionable !== undefined) updateData.mentionable = mentionable;
+        if (permissions !== undefined) updateData.permissions = permissions;
+
+        await role.edit(updateData);
+        if (global.botEmitter) global.botEmitter.emit('editRoleResult', { success: true, message: '✅ تم تعديل الرتبة بنجاح' });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('editRoleResult', { success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
+global.botEmitter.on('deleteRole', async ({ roleId }) => {
+    try {
+        if (!config.guildId) {
+            if (global.botEmitter) global.botEmitter.emit('deleteRoleResult', { success: false, message: '⚠️ لم يتم تعيين معرف السيرفر' });
+            return;
+        }
+        const guild = client.guilds.cache.get(config.guildId);
+        if (!guild) {
+            if (global.botEmitter) global.botEmitter.emit('deleteRoleResult', { success: false, message: '⚠️ السيرفر غير موجود' });
+            return;
+        }
+
+        const role = guild.roles.cache.get(roleId);
+        if (!role) {
+            if (global.botEmitter) global.botEmitter.emit('deleteRoleResult', { success: false, message: '⚠️ الرتبة غير موجودة' });
+            return;
+        }
+
+        await role.delete();
+        if (global.botEmitter) global.botEmitter.emit('deleteRoleResult', { success: true, message: '✅ تم حذف الرتبة بنجاح' });
+    } catch (e) {
+        if (global.botEmitter) global.botEmitter.emit('deleteRoleResult', { success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
 if (process.env.token) {
     client.login(process.env.token);
 } else {
