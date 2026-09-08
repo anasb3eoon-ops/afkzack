@@ -1196,6 +1196,7 @@ app.get('/', (req, res) => {
                     <button type="button" class="active" data-panel-target="overview">⚙️ النظرة العامة</button>
                     <button type="button" data-panel-target="tasks">⚡ إدارة المهام</button>
                     <button type="button" data-panel-target="channels">🎙️ القنوات والرسائل</button>
+                    <button type="button" data-panel-target="dm">💬 المحادثات</button>
                     <button type="button" data-panel-target="monitor">🛰️ المراقبة</button>
                 </nav>
 
@@ -1385,6 +1386,43 @@ app.get('/', (req, res) => {
                             <input type="number" id="deleteMessageCount" placeholder="مثال: 50" min="1" max="100" value="50">
                         </div>
                         <button type="button" class="btn btn-danger" onclick="deleteMessages()" style="width: 100%;">🗑️ حذف الرسائل</button>
+                    </div>
+                </div>
+
+                <div class="grid panel" data-panel="dm">
+                    <div class="card">
+                        <h3>💬 محادثات الخاص</h3>
+                        <div class="form-group">
+                            <label>👤 ID الشخص</label>
+                            <input type="text" id="dmUserId" placeholder="أدخل ID الشخص">
+                        </div>
+                        <div class="form-group">
+                            <label>⏰ الفترة الزمنية</label>
+                            <select id="dmTimeRange">
+                                <option value="all">المحادثة كاملة</option>
+                                <option value="last_hour">آخر ساعة</option>
+                                <option value="last_6_hours">آخر 6 ساعات</option>
+                            </select>
+                        </div>
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-primary" id="dmStartBtn" onclick="startDMViewer()">🔍 فتح المحادثة</button>
+                            <button type="button" class="btn btn-success" id="dmStopBtn" onclick="stopDMViewer()" style="display:none;">⏹ إيقاف</button>
+                        </div>
+                        <div id="dmProgress" style="margin-top:16px; display:none;">
+                            <div class="stat-item">
+                                <span>الحالة</span>
+                                <span id="dmStatus">جاري التحميل...</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>الرسائل المحملة</span>
+                                <span id="dmProgressText">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" id="dmChatCard" style="display:none;">
+                        <h3>💬 المحادثة <span id="dmChatUser" style="color:var(--gold);"></span></h3>
+                        <div id="dmChatMessages" style="max-height:600px; overflow-y:auto; padding:4px;"></div>
                     </div>
                 </div>
 
@@ -1750,11 +1788,152 @@ app.get('/', (req, res) => {
                     document.getElementById('monitorMessagesCard').style.display = 'none';
                 }
 
+                let dmPollInterval = null;
+
+                function startDMViewer() {
+                    const userId = document.getElementById('dmUserId').value.trim();
+                    const timeRange = document.getElementById('dmTimeRange').value;
+                    if (!userId) {
+                        alert('❌ أدخل ID الشخص');
+                        return;
+                    }
+
+                    document.getElementById('dmChatCard').style.display = 'none';
+                    document.getElementById('dmProgress').style.display = 'block';
+                    document.getElementById('dmStartBtn').style.display = 'none';
+                    document.getElementById('dmStopBtn').style.display = 'inline-block';
+                    document.getElementById('dmStatus').textContent = 'جاري التحميل...';
+                    document.getElementById('dmProgressText').textContent = '0';
+
+                    fetch('/api/dm/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, timeRange })
+                    }).then(r => r.json()).then(data => {
+                        if (!data.success) {
+                            alert(data.message);
+                            resetDMUI();
+                        } else {
+                            pollDMResult();
+                        }
+                    });
+                }
+
+                function stopDMViewer() {
+                    fetch('/api/dm/stop', { method: 'POST' });
+                    document.getElementById('dmStatus').textContent = 'جاري الإيقاف...';
+                }
+
+                function pollDMResult() {
+                    if (dmPollInterval) clearInterval(dmPollInterval);
+                    dmPollInterval = setInterval(() => {
+                        fetch('/api/dm/result').then(r => r.json()).then(data => {
+                            if (!data.success) return;
+                            const active = data.active;
+                            const progress = data.progress || {};
+                            const result = data.result;
+
+                            if (active) {
+                                document.getElementById('dmStatus').textContent = 'جاري التحميل...';
+                                document.getElementById('dmProgressText').textContent = progress.current || 0;
+                            } else {
+                                clearInterval(dmPollInterval);
+                                dmPollInterval = null;
+                                if (result && result.messages && result.messages.length > 0) {
+                                    renderDMChat(result);
+                                } else if (result && result.error) {
+                                    document.getElementById('dmProgress').style.display = 'none';
+                                    document.getElementById('dmChatCard').style.display = 'block';
+                                    document.getElementById('dmChatUser').textContent = 'خطأ';
+                                    document.getElementById('dmChatMessages').innerHTML = '<div style="text-align:center; padding:30px; color:var(--danger);">❌ ' + escapeHtml(result.error) + '</div>';
+                                } else {
+                                    document.getElementById('dmProgress').style.display = 'none';
+                                    document.getElementById('dmChatCard').style.display = 'block';
+                                    document.getElementById('dmChatMessages').innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-sub);">لا توجد رسائل في هذه الفترة</div>';
+                                }
+                                resetDMUI();
+                            }
+                        }).catch(() => {});
+                    }, 500);
+                }
+
+                function resetDMUI() {
+                    document.getElementById('dmStartBtn').style.display = 'inline-block';
+                    document.getElementById('dmStopBtn').style.display = 'none';
+                }
+
+                function renderDMChat(result) {
+                    document.getElementById('dmProgress').style.display = 'none';
+                    document.getElementById('dmChatCard').style.display = 'block';
+                    document.getElementById('dmChatUser').textContent = result.userName || ('ID: ' + result.userId);
+
+                    const list = document.getElementById('dmChatMessages');
+                    list.innerHTML = '';
+
+                    (result.messages || []).forEach(msg => {
+                        const item = document.createElement('div');
+                        item.className = 'monitor-message';
+
+                        let contentHtml = '<div class="msg-time">' + formatTime(msg.time) + ' - ' + (msg.isBot ? '🤖 البوت' : '👤 ' + escapeHtml(msg.authorName)) + '</div>';
+                        contentHtml += '<div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
+
+                        if (msg.attachments && msg.attachments.length > 0) {
+                            msg.attachments.forEach(att => {
+                                if (att.contentType && att.contentType.startsWith('image/')) {
+                                    contentHtml += '<div style="margin-top:8px;"><img src="' + att.url + '" style="max-width:300px; max-height:300px; border-radius:8px; border:1px solid var(--line);" loading="lazy"></div>';
+                                } else if (att.contentType && att.contentType.startsWith('audio/') || (att.name && att.name.endsWith('.ogg'))) {
+                                    contentHtml += '<div style="margin-top:8px;"><audio controls src="' + att.url + '" style="max-width:300px;"></audio></div>';
+                                } else {
+                                    contentHtml += '<div style="margin-top:8px;"><a href="' + att.url + '" target="_blank" style="color:var(--gold);">📎 ' + escapeHtml(att.name || 'ملف') + '</a></div>';
+                                }
+                            });
+                        }
+
+                        if (msg.embeds && msg.embeds.length > 0) {
+                            msg.embeds.forEach(embed => {
+                                if (embed.title) {
+                                    contentHtml += '<div style="margin-top:8px; font-weight:600; color:var(--gold-bright);">' + escapeHtml(embed.title) + '</div>';
+                                }
+                                if (embed.description) {
+                                    contentHtml += '<div style="margin-top:4px; color:var(--text-soft);">' + escapeHtml(embed.description) + '</div>';
+                                }
+                            });
+                        }
+
+                        item.innerHTML = contentHtml;
+                        list.appendChild(item);
+                    });
+
+                    list.scrollTop = list.scrollHeight;
+                }
+
                 function escapeHtml(text) {
                     const div = document.createElement('div');
                     div.textContent = text;
                     return div.innerHTML;
                 }
+
+                function formatTime(iso) {
+                    if (!iso) return '—';
+                    try {
+                        const d = new Date(iso);
+                        return d.toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' });
+                    } catch { return iso; }
+                }
+
+                function formatDuration(ms) {
+                    if (!ms) return '—';
+                    const s = Math.floor(ms / 1000);
+                    if (s < 60) return s + ' ثانية';
+                    const m = Math.floor(s / 60);
+                    const rs = s % 60;
+                    if (m < 60) return m + ' د ' + rs + ' ث';
+                    const h = Math.floor(m / 60);
+                    const rm = m % 60;
+                    return h + ' س ' + rm + ' د';
+                }
+
+                (function setupNumWraps() {
 
                 (function setupNumWraps() {
                     const upSvg = '<svg viewBox="0 0 24 24"><path d="M12 6l-7 8h14z"/></svg>';
@@ -1911,6 +2090,49 @@ app.get('/api/monitor/result', (req, res) => {
         userId: s.userId,
         result: s.result,
         liveMessages: s.liveMessages || []
+    });
+});
+
+app.post('/api/dm/start', express.json(), async (req, res) => {
+    if (!global.sharedDMState) {
+        global.sharedDMState = { active: false, userId: '', timeRange: 'all', startedAt: null, finishedAt: null, progress: { current: 0, total: 0 }, result: null };
+    }
+    if (global.sharedDMState.active) {
+        return res.json({ success: false, message: '⚠️ جاري تحميل المحادثة بالفعل' });
+    }
+    const { userId, timeRange } = req.body || {};
+    if (!userId) {
+        return res.json({ success: false, message: '⚠️ يجب إدخال ID الشخص' });
+    }
+    global.sharedDMState.active = true;
+    global.sharedDMState.userId = String(userId).trim().replace(/^<@!?/, '').replace(/>$/, '');
+    global.sharedDMState.timeRange = timeRange || 'all';
+    global.sharedDMState.startedAt = Date.now();
+    global.sharedDMState.finishedAt = null;
+    global.sharedDMState.progress = { current: 0, total: 0 };
+    global.sharedDMState.result = null;
+    if (global.botEmitter) {
+        global.botEmitter.emit('fetchDMHistory', { userId: global.sharedDMState.userId, timeRange: global.sharedDMState.timeRange });
+    }
+    res.json({ success: true, message: '✅ بدأ التحميل' });
+});
+
+app.post('/api/dm/stop', (req, res) => {
+    if (global.sharedDMState) {
+        global.sharedDMState.active = false;
+    }
+    res.json({ success: true });
+});
+
+app.get('/api/dm/result', (req, res) => {
+    const s = global.sharedDMState || { active: false, progress: {}, result: null };
+    res.json({
+        success: true,
+        active: s.active,
+        progress: s.progress || {},
+        userId: s.userId,
+        timeRange: s.timeRange,
+        result: s.result
     });
 });
 

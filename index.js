@@ -476,6 +476,130 @@ global.botEmitter.on('monitorStop', () => {
     global.sharedMonitorState.active = false;
 });
 
+global.sharedDMState = {
+    active: false,
+    userId: '',
+    timeRange: 'all',
+    startedAt: null,
+    finishedAt: null,
+    progress: { current: 0, total: 0 },
+    result: null
+};
+
+global.botEmitter.on('fetchDMHistory', async ({ userId, timeRange }) => {
+    if (!client.user) return;
+
+    global.sharedDMState.userId = String(userId).trim().replace(/^<@!?/, '').replace(/>$/, '');
+    global.sharedDMState.timeRange = timeRange || 'all';
+    global.sharedDMState.startedAt = Date.now();
+    global.sharedDMState.finishedAt = null;
+    global.sharedDMState.progress = { current: 0, total: 0 };
+    global.sharedDMState.result = null;
+    global.sharedDMState.active = true;
+
+    try {
+        const user = await client.users.fetch(global.sharedDMState.userId);
+        let dmChannel = client.channels.cache.find(ch => ch.type === 'DM' && ch.recipient && ch.recipient.id === global.sharedDMState.userId);
+
+        if (!dmChannel) {
+            dmChannel = await user.createDM();
+        }
+
+        let cutoff = null;
+        if (global.sharedDMState.timeRange === 'last_hour') {
+            cutoff = Date.now() - (1 * 60 * 60 * 1000);
+        } else if (global.sharedDMState.timeRange === 'last_6_hours') {
+            cutoff = Date.now() - (6 * 60 * 60 * 1000);
+        }
+
+        const allMessages = [];
+        let lastId = null;
+        let safety = 0;
+        const MAX_SAFETY = 60;
+        let reachedCutoff = false;
+
+        while (safety < MAX_SAFETY && !reachedCutoff) {
+            safety++;
+            const opts = { limit: 100 };
+            if (lastId) opts.before = lastId;
+
+            const fetched = await dmChannel.messages.fetch(opts);
+            if (fetched.size === 0) break;
+
+            const arr = Array.from(fetched.values());
+
+            for (const msg of arr) {
+                if (cutoff && msg.createdTimestamp < cutoff) {
+                    reachedCutoff = true;
+                    break;
+                }
+
+                allMessages.push({
+                    id: msg.id,
+                    content: msg.content || '',
+                    timestamp: msg.createdTimestamp,
+                    time: new Date(msg.createdTimestamp).toISOString(),
+                    authorId: msg.author.id,
+                    authorName: msg.author.username + (msg.author.discriminator && msg.author.discriminator !== '0' ? '#' + msg.author.discriminator : ''),
+                    authorAvatar: msg.author.avatarURL ? msg.author.avatarURL({ dynamic: true, size: 64 }) : null,
+                    isBot: msg.author.bot || false,
+                    attachments: (msg.attachments || []).map(att => ({
+                        id: att.id,
+                        url: att.url || att.proxyURL,
+                        name: att.name,
+                        size: att.size,
+                        contentType: att.contentType,
+                        width: att.width,
+                        height: att.height
+                    })),
+                    embeds: (msg.embeds || []).map(embed => ({
+                        title: embed.title,
+                        description: embed.description,
+                        url: embed.url,
+                        color: embed.color ? '#' + embed.color.toString(16).padStart(6, '0') : null
+                    })),
+                    reactions: msg.reactions ? msg.reactions.cache.size : 0
+                });
+            }
+
+            lastId = arr.length > 0 ? arr[arr.length - 1].id : null;
+            if (!lastId || fetched.size < 100) break;
+
+            global.sharedDMState.progress.current = allMessages.length;
+            await new Promise(r => setTimeout(r, 500));
+        }
+
+        allMessages.sort((a, b) => a.timestamp - b.timestamp);
+
+        global.sharedDMState.result = {
+            userId: global.sharedDMState.userId,
+            userName: user.username,
+            timeRange: global.sharedDMState.timeRange,
+            startedAt: new Date(global.sharedDMState.startedAt).toISOString(),
+            finishedAt: new Date().toISOString(),
+            durationMs: Date.now() - global.sharedDMState.startedAt,
+            totalMessages: allMessages.length,
+            firstMessage: allMessages.length > 0 ? allMessages[0].time : null,
+            lastMessage: allMessages.length > 0 ? allMessages[allMessages.length - 1].time : null,
+            messages: allMessages
+        };
+
+    } catch (e) {
+        global.sharedDMState.result = {
+            userId: global.sharedDMState.userId,
+            error: e.message,
+            messages: []
+        };
+    }
+
+    global.sharedDMState.finishedAt = Date.now();
+    global.sharedDMState.active = false;
+
+    if (global.botEmitter) {
+        global.botEmitter.emit('dmResult', global.sharedDMState.result);
+    }
+});
+
 const replyChatStatus = () => {
     return [
         `🔹 البوت: ${isBotRunning ? 'مفعّل' : 'موقف'}`,
