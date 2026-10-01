@@ -2671,13 +2671,6 @@ app.get('/api/toggle/:action', (req, res) => {
     res.json({ success: true });
 });
 
-app.get('/api/toggle/gamezone', (req, res) => {
-    if (global.botEmitter) {
-        global.botEmitter.emit('toggleGameZone');
-    }
-    res.json({ success: true });
-});
-
 app.get('/api/toggle-task/:task', (req, res) => {
     if (global.botEmitter) {
         global.botEmitter.emit('toggleTask', req.params.task);

@@ -929,14 +929,34 @@ const stopPlanBLoop = () => {
 
 const startGameZoneLoop = () => {
     stopGameZoneLoop();
-    if (!isGameZoneRunning || !isBotRunning || !isChatActive) return;
-    if (gameZoneBusy) return;
+    if (!isGameZoneRunning || !isBotRunning || !isChatActive || gameZoneBusy) return;
+
+    const gameChannel = client.channels.cache.get(config.gameZoneChannelId);
+    const aiGuild = client.guilds.cache.get(config.gameZoneAIGuildId);
+    const aiChannel = aiGuild ? aiGuild.channels.cache.get(config.gameZoneAIChannelId) : null;
+
+    if (!gameChannel) {
+        console.error('❌ Game Zone: روم Game Zone غير موجود، تأكد أن البوت في السيرفر:', config.gameZoneGuildId);
+        return;
+    }
+    if (!aiGuild) {
+        console.error('❌ Game Zone: سيرفر الذكاء الاصطناعي غير موجود، تأكد أن البوت فيه:', config.gameZoneAIGuildId);
+        return;
+    }
+    if (!aiChannel) {
+        console.error('❌ Game Zone: روم الذكاء الاصطناعي غير موجود، تأكد أن ID الروم صحيح:', config.gameZoneAIChannelId);
+        return;
+    }
+
+    console.log('🎮 Game Zone: بدء التشغيل');
     runGameZoneCycle();
 };
 
 const stopGameZoneLoop = () => {
     if (gameZoneTimer) clearTimeout(gameZoneTimer);
     gameZoneTimer = null;
+    isGameZoneRunning = false;
+    gameZoneBusy = false;
 };
 
 const startPlanBLoop = () => {
@@ -961,10 +981,19 @@ const runGameZoneCycle = async () => {
     gameZoneBusy = true;
     try {
         const gameChannel = client.channels.cache.get(config.gameZoneChannelId);
-        const aiChannel = client.channels.cache.get(config.gameZoneAIChannelId);
+        const aiGuild = client.guilds.cache.get(config.gameZoneAIGuildId);
+        const aiChannel = aiGuild ? aiGuild.channels.cache.get(config.gameZoneAIChannelId) : null;
 
-        if (!gameChannel || !aiChannel) {
-            console.error('❌ Game Zone: قنوات غير موجودة');
+        if (!gameChannel) {
+            console.error('❌ Game Zone: روم Game Zone غير موجود في الكاش، تأكد أن البوت في السيرفر:', config.gameZoneGuildId);
+            return;
+        }
+        if (!aiGuild) {
+            console.error('❌ Game Zone: سيرفر الذكاء الاصطناعي غير موجود في الكاش، تأكد أن البوت فيه:', config.gameZoneAIGuildId);
+            return;
+        }
+        if (!aiChannel) {
+            console.error('❌ Game Zone: روم الذكاء الاصطناعي غير موجود في الكاش، تأكد أن البوت في السيرفر وأن ID الروم صحيح:', config.gameZoneAIChannelId);
             return;
         }
 
@@ -975,6 +1004,7 @@ const runGameZoneCycle = async () => {
         }
 
         const waitQuestion = Number(config.gameZoneWaitAnswerMs) || 10000;
+        console.log(`🎮 Game Zone: انتظار ${waitQuestion}ms لظهور السؤال...`);
         await new Promise(resolve => setTimeout(resolve, waitQuestion));
 
         const question = await findLatestGameZoneQuestion();
@@ -982,8 +1012,16 @@ const runGameZoneCycle = async () => {
             console.warn('⚠️ Game Zone: لم يتم العثور على سؤال');
             return;
         }
+        console.log(`🎮 Game Zone: السؤال المستخرج: ${question}`);
 
-        const aiMessages = await aiChannel.messages.fetch({ limit: 20 });
+        let aiMessages;
+        try {
+            aiMessages = await aiChannel.messages.fetch({ limit: 20 });
+        } catch (e) {
+            console.error('❌ Game Zone: خطأ جلب رسائل الذكاء الاصطناعي:', e.message);
+            return;
+        }
+
         const aiBotMessage = aiMessages.find(m => m.author && m.author.id === config.gameZoneAIBotId);
         if (!aiBotMessage) {
             console.warn('⚠️ Game Zone: لم يتم العثور على رسالة بوت الذكاء الاصطناعي');
@@ -991,23 +1029,37 @@ const runGameZoneCycle = async () => {
         }
 
         const answerPrompt = `${question}\n(اعطني الاجابة فقط بدون شرح)`;
+        console.log(`🎮 Game Zone: إرسال السؤال للذكاء الاصطناعي...`);
         await aiBotMessage.reply(answerPrompt);
 
         const waitResponse = Number(config.gameZoneWaitAIResponseMs) || 12000;
+        console.log(`🎮 Game Zone: انتظار ${waitResponse}ms لرد الذكاء الاصطناعي...`);
         await new Promise(resolve => setTimeout(resolve, waitResponse));
 
-        const updatedAiMessages = await aiChannel.messages.fetch({ limit: 20 });
-        const aiReply = updatedAiMessages.find(m => m.reference && m.reference.messageId === aiBotMessage.id && m.author.id !== client.user?.id);
-        const aiAnswer = aiReply ? aiReply.content.trim() : null;
-        
+        let updatedAiMessages;
+        try {
+            updatedAiMessages = await aiChannel.messages.fetch({ limit: 20 });
+        } catch (e) {
+            console.error('❌ Game Zone: خطأ جلب رد الذكاء الاصطناعي:', e.message);
+            return;
+        }
+
+        let aiReply = updatedAiMessages.find(m => m.reference && m.reference.messageId === aiBotMessage.id && m.author.id !== client.user?.id);
+        let aiAnswer = aiReply ? aiReply.content.trim() : null;
+
         if (!aiAnswer) {
             const afterBot = updatedAiMessages.filter(m => m.createdTimestamp > aiBotMessage.createdTimestamp && m.author.id !== client.user?.id);
             const candidate = afterBot.sort((a, b) => b.createdTimestamp - a.createdTimestamp)[0];
             if (candidate && candidate.content) {
-                await sendChannelMessage(config.gameZoneChannelId, candidate.content, 'Game Zone');
+                aiAnswer = candidate.content.trim();
             }
-        } else {
+        }
+
+        if (aiAnswer) {
+            console.log(`🎮 Game Zone: الإجابة المستلمة: ${aiAnswer}`);
             await sendChannelMessage(config.gameZoneChannelId, aiAnswer, 'Game Zone');
+        } else {
+            console.warn('⚠️ Game Zone: لم يتم العثور على إجابة');
         }
     } catch (e) {
         console.error('❌ Game Zone خطأ:', e);
@@ -1015,6 +1067,7 @@ const runGameZoneCycle = async () => {
         gameZoneBusy = false;
         if (isGameZoneRunning && isBotRunning && isChatActive) {
             const cooldown = Number(config.gameZoneCooldownMs) || 6000;
+            console.log(`🎮 Game Zone: انتظار cooldown ${cooldown}ms...`);
             gameZoneTimer = setTimeout(runGameZoneCycle, cooldown);
         }
     }
@@ -1024,20 +1077,20 @@ const findLatestGameZoneQuestion = async () => {
     const gameChannel = client.channels.cache.get(config.gameZoneChannelId);
     if (!gameChannel || !gameChannel.messages || typeof gameChannel.messages.fetch !== 'function') return null;
 
-    const messages = await gameChannel.messages.fetch({ limit: 20 });
-    const botMessages = messages.filter(m => !m.author || m.author.id !== client.user?.id);
+    const messages = await gameChannel.messages.fetch({ limit: 30 });
+    const botMessages = messages.filter(m => m.author && m.author.id !== client.user?.id);
 
     for (const msg of botMessages.sort((a, b) => b.createdTimestamp - a.createdTimestamp)) {
-        if (msg.content && msg.content.includes('سؤال')) {
-            return msg.content.replace(/سؤال/gi, '').trim();
-        }
+        const content = (msg.content || '').trim();
+        const embedText = msg.embeds && msg.embeds.length > 0
+            ? ((msg.embeds[0].description || msg.embeds[0].title || '')).trim()
+            : '';
 
-        if (msg.embeds && msg.embeds.length > 0) {
-            const embed = msg.embeds[0];
-            const text = (embed.description || embed.title || '').trim();
-            if (text && text.includes('سؤال')) {
-                return text.replace(/سؤال/gi, '').trim();
-            }
+        if (content.includes('سؤال')) {
+            return content.replace(/سؤال/gi, '').trim();
+        }
+        if (embedText && embedText.includes('سؤال')) {
+            return embedText.replace(/سؤال/gi, '').trim();
         }
     }
     return null;
