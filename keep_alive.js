@@ -12,6 +12,7 @@ let botState = {
     isVoiceActive: true,
     isTaskRunning: true,
     isPlanBRunning: false,
+    isGameZoneRunning: false,
     stats: {},
     config: {}
 };
@@ -1274,6 +1275,11 @@ app.get('/', (req, res) => {
                                 <span class="task-state">${taskActive('task5') ? 'مفعلة' : 'متوقفة'}</span>
                                 <button type="button" class="btn ${taskActive('task5') ? 'btn-danger' : 'btn-success'}" data-task="task5" onclick="toggleTask('task5', this)">${taskActive('task5') ? '⏹ إيقاف' : '▶ تشغيل'}</button>
                             </div>
+                            <div class="task-row">
+                                <span class="task-name"><span class="task-number">06</span>Game Zone</span>
+                                <span class="task-state">${botState.isGameZoneRunning ? 'مفعلة' : 'متوقفة'}</span>
+                                <button type="button" class="btn ${botState.isGameZoneRunning ? 'btn-danger' : 'btn-success'}" data-action="gamezone" onclick="toggleAction('gamezone', this)">${botState.isGameZoneRunning ? '⏹ إيقاف' : '▶ تشغيل'}</button>
+                            </div>
                         </div>
                     </div>
 
@@ -1380,6 +1386,50 @@ app.get('/', (req, res) => {
                             <div class="form-group">
                                 <label>🔴 قناة ال AFK (الانتظار)</label>
                                 <input type="text" name="afkChannelId" value="${c.afkChannelId || ''}" placeholder="أدخل رقم القناة">
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="margin-top: 15px;">💾 حفظ</button>
+                        </form>
+                    </div>
+
+                    <!-- Game Zone Config -->
+                    <div class="card">
+                        <h3>🎮 Game Zone</h3>
+                        <form action="/api/update-tasks-config" method="POST">
+                            <div class="form-group">
+                                <label>🆔 معرف سيرفر Game Zone</label>
+                                <input type="text" name="gameZoneGuildId" value="${c.gameZoneGuildId || ''}" placeholder="مثال: 1545527685328019569">
+                            </div>
+                            <div class="form-group">
+                                <label>🆔 معرف روم Game Zone</label>
+                                <input type="text" name="gameZoneChannelId" value="${c.gameZoneChannelId || ''}" placeholder="مثال: 1545527685328019569">
+                            </div>
+                            <div class="form-group">
+                                <label>⌨️ الأمر</label>
+                                <input type="text" name="gameZoneCommand" value="${c.gameZoneCommand || '.سؤال'}" placeholder="مثال: .سؤال">
+                            </div>
+                            <div class="form-group">
+                                <label>🤖 معرف سيرفر الذكاء الاصطناعي</label>
+                                <input type="text" name="gameZoneAIGuildId" value="${c.gameZoneAIGuildId || ''}" placeholder="مثال: 1526940569514021015">
+                            </div>
+                            <div class="form-group">
+                                <label>💬 معرف روم الذكاء الاصطناعي</label>
+                                <input type="text" name="gameZoneAIChannelId" value="${c.gameZoneAIChannelId || ''}" placeholder="مثال: 1526945071201517728">
+                            </div>
+                            <div class="form-group">
+                                <label>🆔 معرف بوت الذكاء الاصطناعي</label>
+                                <input type="text" name="gameZoneAIBotId" value="${c.gameZoneAIBotId || ''}" placeholder="مثال: 1250114494081007697">
+                            </div>
+                            <div class="form-group">
+                                <label>⏱️ فترة الانتظار لظهور السؤال (ms)</label>
+                                <input type="number" name="gameZoneWaitAnswerMs" value="${c.gameZoneWaitAnswerMs || 10000}" min="1000" step="500">
+                            </div>
+                            <div class="form-group">
+                                <label>⏱️ فترة الانتظار لرد الذكاء الاصطناعي (ms)</label>
+                                <input type="number" name="gameZoneWaitAIResponseMs" value="${c.gameZoneWaitAIResponseMs || 12000}" min="1000" step="500">
+                            </div>
+                            <div class="form-group">
+                                <label>⏱️ Cooldown بين كل دورة (ms)</label>
+                                <input type="number" name="gameZoneCooldownMs" value="${c.gameZoneCooldownMs || 6000}" min="1000" step="500">
                             </div>
                             <button type="submit" class="btn btn-primary" style="margin-top: 15px;">💾 حفظ</button>
                         </form>
@@ -2621,6 +2671,13 @@ app.get('/api/toggle/:action', (req, res) => {
     res.json({ success: true });
 });
 
+app.get('/api/toggle/gamezone', (req, res) => {
+    if (global.botEmitter) {
+        global.botEmitter.emit('toggleGameZone');
+    }
+    res.json({ success: true });
+});
+
 app.get('/api/toggle-task/:task', (req, res) => {
     if (global.botEmitter) {
         global.botEmitter.emit('toggleTask', req.params.task);
@@ -2631,6 +2688,13 @@ app.get('/api/toggle-task/:task', (req, res) => {
 app.get('/api/toggle-planb', (req, res) => {
     if (global.botEmitter) {
         global.botEmitter.emit('togglePlanB');
+    }
+    res.json({ success: true });
+});
+
+app.get('/api/toggle-gamezone', (req, res) => {
+    if (global.botEmitter) {
+        global.botEmitter.emit('toggleGameZone');
     }
     res.json({ success: true });
 });

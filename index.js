@@ -49,7 +49,17 @@ const defaultConfig = {
     task5BetMin: 5000,
     task5BetMax: 10000,
     task5GapMin: 10,
-    task5GapMax: 12
+    task5GapMax: 12,
+
+    gameZoneGuildId: "1545527685328019569",
+    gameZoneChannelId: "1545527685328019569",
+    gameZoneCommand: ".سؤال",
+    gameZoneAIGuildId: "1526940569514021015",
+    gameZoneAIChannelId: "1526945071201517728",
+    gameZoneAIBotId: "1250114494081007697",
+    gameZoneCooldownMs: 6000,
+    gameZoneWaitAnswerMs: 10000,
+    gameZoneWaitAIResponseMs: 12000
 };
 
 let config = { ...defaultConfig };
@@ -81,6 +91,9 @@ let isChatActive = true;
 let isVoiceActive = false;
 let isBotRunning = true;
 let isTaskRunning = true;
+let isGameZoneRunning = false;
+let gameZoneBusy = false;
+let gameZoneTimer = null;
 const taskStates = { task1: false, task2: false, task3: false, task4: false, task5: false };
 let planBInterval = null;
 let isPlanBRunning = false;
@@ -104,6 +117,7 @@ const syncState = () => {
         isVoiceActive,
         isPlanBRunning,
         isTaskRunning,
+        isGameZoneRunning,
         taskStates,
         stats,
         config
@@ -140,12 +154,15 @@ global.botEmitter.on('control', (action) => {
             isChatActive = false;
             isVoiceActive = false;
             isTaskRunning = false;
+            isGameZoneRunning = false;
             task5Stopped = true;
+            gameZoneBusy = false;
             Object.keys(taskTimers).forEach(taskName => {
                 if (taskTimers[taskName]) clearTimeout(taskTimers[taskName]);
                 taskTimers[taskName] = null;
             });
             stopPlanBLoop();
+            stopGameZoneLoop();
             const conn = getVoiceConnection(config.guildId);
             if (conn) conn.destroy();
         } else {
@@ -154,6 +171,7 @@ global.botEmitter.on('control', (action) => {
             isTaskRunning = true;
             connectToVoice();
             startTaskLoops();
+            if (isGameZoneRunning) startGameZoneLoop();
         }
     } else if (action === 'voice') {
         isVoiceActive = !isVoiceActive;
@@ -176,6 +194,13 @@ global.botEmitter.on('control', (action) => {
         isPlanBRunning = !isPlanBRunning;
         if (isPlanBRunning) {
             startPlanBLoop();
+        }
+    } else if (action === 'gamezone') {
+        isGameZoneRunning = !isGameZoneRunning;
+        if (isGameZoneRunning) {
+            startGameZoneLoop();
+        } else {
+            stopGameZoneLoop();
         }
     }
     syncState();
@@ -208,6 +233,16 @@ global.botEmitter.on('togglePlanB', () => {
     isPlanBRunning = !isPlanBRunning;
     if (isPlanBRunning) startPlanBLoop();
     else stopPlanBLoop();
+    syncState();
+});
+
+global.botEmitter.on('toggleGameZone', () => {
+    isGameZoneRunning = !isGameZoneRunning;
+    if (isGameZoneRunning) {
+        startGameZoneLoop();
+    } else {
+        stopGameZoneLoop();
+    }
     syncState();
 });
 
@@ -274,6 +309,21 @@ global.botEmitter.on('updateTasksConfig', (newCfg) => {
     }
     if (newCfg.task5GapMax !== undefined && Number.isFinite(Number(newCfg.task5GapMax))) {
         config.task5GapMax = Math.max(config.task5GapMin || 0.1, Number(newCfg.task5GapMax));
+    }
+    if (newCfg.gameZoneGuildId) config.gameZoneGuildId = newCfg.gameZoneGuildId;
+    if (newCfg.gameZoneChannelId) config.gameZoneChannelId = newCfg.gameZoneChannelId;
+    if (newCfg.gameZoneCommand) config.gameZoneCommand = newCfg.gameZoneCommand;
+    if (newCfg.gameZoneAIGuildId) config.gameZoneAIGuildId = newCfg.gameZoneAIGuildId;
+    if (newCfg.gameZoneAIChannelId) config.gameZoneAIChannelId = newCfg.gameZoneAIChannelId;
+    if (newCfg.gameZoneAIBotId) config.gameZoneAIBotId = newCfg.gameZoneAIBotId;
+    if (newCfg.gameZoneCooldownMs !== undefined && Number.isFinite(Number(newCfg.gameZoneCooldownMs))) {
+        config.gameZoneCooldownMs = Math.max(1000, Number(newCfg.gameZoneCooldownMs));
+    }
+    if (newCfg.gameZoneWaitAnswerMs !== undefined && Number.isFinite(Number(newCfg.gameZoneWaitAnswerMs))) {
+        config.gameZoneWaitAnswerMs = Math.max(1000, Number(newCfg.gameZoneWaitAnswerMs));
+    }
+    if (newCfg.gameZoneWaitAIResponseMs !== undefined && Number.isFinite(Number(newCfg.gameZoneWaitAIResponseMs))) {
+        config.gameZoneWaitAIResponseMs = Math.max(1000, Number(newCfg.gameZoneWaitAIResponseMs));
     }
     saveConfig();
     if (timingChanged) {
@@ -704,7 +754,8 @@ const replyChatStatus = () => {
         `🔹 الصوت: ${isVoiceActive ? 'مفعّل' : 'موقف'}`,
         `🔹 الكتابة: ${isChatActive ? 'مفعّلة' : 'موقفة'}`,
         `🔹 المهام: ${isTaskRunning ? 'مفعّلة' : 'موقفة'}`,
-        `🔹 الخطة ب: ${isPlanBRunning ? 'مفعّلة' : 'موقفة'}`
+        `🔹 الخطة ب: ${isPlanBRunning ? 'مفعّلة' : 'موقفة'}`,
+        `🔹 Game Zone: ${isGameZoneRunning ? 'مفعّلة' : 'موقفة'}`
     ].join('\n');
 };
 
@@ -876,6 +927,18 @@ const stopPlanBLoop = () => {
     planBInterval = null;
 };
 
+const startGameZoneLoop = () => {
+    stopGameZoneLoop();
+    if (!isGameZoneRunning || !isBotRunning || !isChatActive) return;
+    if (gameZoneBusy) return;
+    runGameZoneCycle();
+};
+
+const stopGameZoneLoop = () => {
+    if (gameZoneTimer) clearTimeout(gameZoneTimer);
+    gameZoneTimer = null;
+};
+
 const startPlanBLoop = () => {
     stopPlanBLoop();
     if (!isPlanBRunning) return;
@@ -890,6 +953,94 @@ const startPlanBLoop = () => {
 
     const repeat = Number(config.planBRepeat) || 2.5;
     planBInterval = setTimeout(sendPlanB, repeat * 1000);
+};
+
+const runGameZoneCycle = async () => {
+    if (!isGameZoneRunning || !isBotRunning || !isChatActive || gameZoneBusy) return;
+
+    gameZoneBusy = true;
+    try {
+        const gameChannel = client.channels.cache.get(config.gameZoneChannelId);
+        const aiChannel = client.channels.cache.get(config.gameZoneAIChannelId);
+
+        if (!gameChannel || !aiChannel) {
+            console.error('❌ Game Zone: قنوات غير موجودة');
+            return;
+        }
+
+        const sent = await sendChannelMessage(config.gameZoneChannelId, config.gameZoneCommand, 'Game Zone');
+        if (!sent) {
+            console.error('❌ Game Zone: فشل إرسال الأمر');
+            return;
+        }
+
+        const waitQuestion = Number(config.gameZoneWaitAnswerMs) || 10000;
+        await new Promise(resolve => setTimeout(resolve, waitQuestion));
+
+        const question = await findLatestGameZoneQuestion();
+        if (!question) {
+            console.warn('⚠️ Game Zone: لم يتم العثور على سؤال');
+            return;
+        }
+
+        const aiMessages = await aiChannel.messages.fetch({ limit: 20 });
+        const aiBotMessage = aiMessages.find(m => m.author && m.author.id === config.gameZoneAIBotId);
+        if (!aiBotMessage) {
+            console.warn('⚠️ Game Zone: لم يتم العثور على رسالة بوت الذكاء الاصطناعي');
+            return;
+        }
+
+        const answerPrompt = `${question}\n(اعطني الاجابة فقط بدون شرح)`;
+        await aiBotMessage.reply(answerPrompt);
+
+        const waitResponse = Number(config.gameZoneWaitAIResponseMs) || 12000;
+        await new Promise(resolve => setTimeout(resolve, waitResponse));
+
+        const updatedAiMessages = await aiChannel.messages.fetch({ limit: 20 });
+        const aiReply = updatedAiMessages.find(m => m.reference && m.reference.messageId === aiBotMessage.id && m.author.id !== client.user?.id);
+        const aiAnswer = aiReply ? aiReply.content.trim() : null;
+        
+        if (!aiAnswer) {
+            const afterBot = updatedAiMessages.filter(m => m.createdTimestamp > aiBotMessage.createdTimestamp && m.author.id !== client.user?.id);
+            const candidate = afterBot.sort((a, b) => b.createdTimestamp - a.createdTimestamp)[0];
+            if (candidate && candidate.content) {
+                await sendChannelMessage(config.gameZoneChannelId, candidate.content, 'Game Zone');
+            }
+        } else {
+            await sendChannelMessage(config.gameZoneChannelId, aiAnswer, 'Game Zone');
+        }
+    } catch (e) {
+        console.error('❌ Game Zone خطأ:', e);
+    } finally {
+        gameZoneBusy = false;
+        if (isGameZoneRunning && isBotRunning && isChatActive) {
+            const cooldown = Number(config.gameZoneCooldownMs) || 6000;
+            gameZoneTimer = setTimeout(runGameZoneCycle, cooldown);
+        }
+    }
+};
+
+const findLatestGameZoneQuestion = async () => {
+    const gameChannel = client.channels.cache.get(config.gameZoneChannelId);
+    if (!gameChannel || !gameChannel.messages || typeof gameChannel.messages.fetch !== 'function') return null;
+
+    const messages = await gameChannel.messages.fetch({ limit: 20 });
+    const botMessages = messages.filter(m => !m.author || m.author.id !== client.user?.id);
+
+    for (const msg of botMessages.sort((a, b) => b.createdTimestamp - a.createdTimestamp)) {
+        if (msg.content && msg.content.includes('سؤال')) {
+            return msg.content.replace(/سؤال/gi, '').trim();
+        }
+
+        if (msg.embeds && msg.embeds.length > 0) {
+            const embed = msg.embeds[0];
+            const text = (embed.description || embed.title || '').trim();
+            if (text && text.includes('سؤال')) {
+                return text.replace(/سؤال/gi, '').trim();
+            }
+        }
+    }
+    return null;
 };
 
 const startTaskLoops = () => {
@@ -915,6 +1066,7 @@ client.on('ready', () => {
     console.log(`✅ تم تسجيل الدخول: ${client.user.tag}`);
     startTaskLoops();
     startPlanBLoop();
+    if (isGameZoneRunning) startGameZoneLoop();
     syncState();
     setInterval(syncState, 5000);
 });
@@ -1084,6 +1236,7 @@ client.on('messageCreate', async (message) => {
 
     if (command === '!help' || command === 'اوامر' || command === 'commands') {
         await isReply('الأوامر المتاحة:\n!status\n!stop\n!start\n!voice off\n!voice on\n!chat off\n!chat on\n!tasks off\n!tasks on\n!planb off\n!planb on\n!delete 50 123456789012345678');
+        return;
     }
 });
 
