@@ -1087,12 +1087,7 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-client.on('voiceStateUpdate', (oldState, newState) => {
-    if (oldState.id !== client.user.id) return;
-    if (isBotRunning && isVoiceActive && newState.channelId !== config.afkChannelId) {
-        setTimeout(connectToVoice, 3000);
-    }
-});
+
 
 global.botEmitter.on('getRoles', async () => {
     try {
