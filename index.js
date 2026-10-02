@@ -876,6 +876,22 @@ const stopPlanBLoop = () => {
     planBInterval = null;
 };
 
+const startPlanBLoop = () => {
+    stopPlanBLoop();
+    if (!isPlanBRunning) return;
+
+    const sendPlanB = async () => {
+        if (!isPlanBRunning) return;
+        await sendChannelMessage(config.planBChannel, config.planBMsg, 'خطة ب');
+        stats.planBCountLog += 1;
+        const repeat = Number(config.planBRepeat) || 2.5;
+        planBInterval = setTimeout(sendPlanB, repeat * 1000);
+    };
+
+    const repeat = Number(config.planBRepeat) || 2.5;
+    planBInterval = setTimeout(sendPlanB, repeat * 1000);
+};
+
 const startTaskLoops = () => {
     Object.values(taskTimers).forEach(timer => {
         if (timer) clearTimeout(timer);
@@ -1068,7 +1084,6 @@ client.on('messageCreate', async (message) => {
 
     if (command === '!help' || command === 'اوامر' || command === 'commands') {
         await isReply('الأوامر المتاحة:\n!status\n!stop\n!start\n!voice off\n!voice on\n!chat off\n!chat on\n!tasks off\n!tasks on\n!planb off\n!planb on\n!delete 50 123456789012345678');
-        return;
     }
 });
 
