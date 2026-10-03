@@ -525,32 +525,6 @@ const startAITimerCountdown = () => {
     }, 1000);
 };
 
-const parseScheduleFromMessage = (message) => {
-    const normalized = message.trim();
-    const patterns = [
-        /^بعد\s+(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i,
-        /^بعد\s+(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i,
-        /^(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i
-    ];
-    for (const pattern of patterns) {
-        const match = normalized.match(pattern);
-        if (match) {
-            const value = Number(match[1]);
-            const unit = match[2].trim();
-            const task = match[3].trim();
-            if (!value || !unit || !task) continue;
-            let seconds = 0;
-            if (/ثانية|ثواني/.test(unit)) seconds = value;
-            else if (/دقيقة|دقائق/.test(unit)) seconds = value * 60;
-            else if (/ساعة|ساعات/.test(unit)) seconds = value * 3600;
-            else continue;
-            if (seconds <= 0 || seconds > 86400) continue;
-            return { delaySeconds: seconds, taskMessage: task, cleanMessage: task };
-        }
-    }
-    return null;
-};
-
 const startAITimerCountdown = () => {
     if (aiScheduledTimer) clearInterval(aiScheduledTimer);
     aiScheduledTimer = setInterval(() => {
