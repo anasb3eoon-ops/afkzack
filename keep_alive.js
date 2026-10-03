@@ -13,7 +13,11 @@ let botState = {
     isTaskRunning: true,
     isPlanBRunning: false,
     stats: {},
-    config: {}
+    config: {},
+    aiChatHistory: [],
+    aiAutoMode: false,
+    aiStatus: 'idle',
+    aiAutoEndTime: null
 };
 
 // دالة لتلقي البيانات وتحديثها من index.js
@@ -1230,11 +1234,85 @@ app.get('/', (req, res) => {
                     .sidebar-divider {
                         display: none;
                     }
-                    .sidebar-section-title {
-                        display: none;
-                    }
+                .sidebar-section-title {
+                    display: none;
                 }
-            </style>
+            }
+
+            .ai-chat-card {
+                display: flex;
+                flex-direction: column;
+                gap: 14px;
+            }
+
+            .ai-chat-window {
+                flex: 1;
+                min-height: 420px;
+                max-height: 520px;
+                overflow-y: auto;
+                padding: 14px;
+                border: 1px solid var(--line);
+                background: rgba(0, 0, 0, 0.25);
+                border-radius: 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .ai-empty-state {
+                margin: auto;
+                color: var(--text-sub);
+                font-size: 0.92rem;
+                text-align: center;
+                padding: 40px 20px;
+            }
+
+            .ai-message {
+                max-width: 85%;
+                padding: 12px 14px;
+                border-radius: 10px;
+                border: 1px solid var(--line);
+                background: var(--bg-card);
+                color: var(--text-bright);
+                font-size: 0.92rem;
+                line-height: 1.6;
+                word-break: break-word;
+                white-space: pre-wrap;
+            }
+
+            .ai-message-user {
+                align-self: flex-end;
+                border-color: var(--gold-dim);
+                background: linear-gradient(135deg, rgba(214, 170, 72, 0.18), rgba(214, 170, 72, 0.04));
+                color: var(--text-bright);
+            }
+
+            .ai-message-assistant {
+                align-self: flex-start;
+                border-color: var(--line-strong);
+                background: rgba(255, 255, 255, 0.03);
+            }
+
+            .ai-message-error {
+                align-self: flex-start;
+                border-color: rgba(248, 113, 113, 0.4);
+                background: rgba(248, 113, 113, 0.08);
+                color: #fca5a5;
+            }
+
+            .ai-message-action {
+                align-self: flex-start;
+                border-color: rgba(74, 222, 128, 0.4);
+                background: rgba(74, 222, 128, 0.08);
+                color: #bbf7d0;
+            }
+
+            .ai-meta {
+                font-size: 0.72rem;
+                color: var(--text-sub);
+                margin-bottom: 4px;
+            }
+        </style>
         </head>
         <body>
             <div style="display:flex; min-height:100vh;">
@@ -1282,6 +1360,12 @@ app.get('/', (req, res) => {
                         <button type="button" class="sidebar-item" data-panel-target="monitor">
                             <span class="sidebar-icon">🛰️</span>
                             <span class="sidebar-label">المراقبة</span>
+                        </button>
+
+                        <div class="sidebar-divider"></div>
+                        <button type="button" class="sidebar-item" data-panel-target="ai">
+                            <span class="sidebar-icon">🤖</span>
+                            <span class="sidebar-label">الذكاء الاصطناعي</span>
                         </button>
                     </nav>
                 </aside>
@@ -1709,6 +1793,33 @@ app.get('/', (req, res) => {
                         <div class="monitor-messages-list" id="monitorMessagesList"></div>
                     </div>
                 </div>
+
+                <div class="grid panel" data-panel="ai">
+                    <div class="card ai-chat-card">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+                            <h3 style="margin:0;">🤖 مساعد الذكاء الاصطناعي</h3>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <input type="text" id="geminiApiKey" placeholder="مفتاح Gemini API" style="flex:1; min-width:220px;">
+                                <button type="button" class="btn btn-primary" onclick="saveGeminiKey()">💾 حفظ المفتاح</button>
+                            </div>
+                        </div>
+                        <div class="ai-chat-window" id="aiChatWindow">
+                            <div class="ai-empty-state">ابدأ محادثة مع الذكاء الاصطناعي أو عيّن مدة للتنفيذ التلقائي</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                                <input type="text" id="aiUserMessage" placeholder="اكتب مهمة أو سؤال..." style="flex:1; min-width:220px;" onkeydown="if(event.key==='Enter') sendAIMessage()">
+                                <button type="button" class="btn btn-primary" onclick="sendAIMessage()">إرسال</button>
+                            </div>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                                <input type="number" id="aiDuration" placeholder="مدة الوضع التلقائي (دقائق)" min="1" value="30" style="width:220px;">
+                                <button type="button" class="btn btn-success" onclick="startAIAuto()">▶ تشغيل تلقائي</button>
+                                <button type="button" class="btn btn-danger" onclick="stopAIAuto()">⏹ إيقاف</button>
+                                <button type="button" class="btn btn-warning" onclick="clearAIChat()">🗑️ مسح</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
@@ -1805,6 +1916,88 @@ app.get('/', (req, res) => {
                         if (data.success) location.reload();
                     });
                 }
+
+                let aiPollInterval = null;
+
+                function renderAIChat() {
+                    fetch('/api/ai/state').then(r => r.json()).then(data => {
+                        if (!data.success) return;
+                        const window_ = document.getElementById('aiChatWindow');
+                        if (!window_) return;
+                        const history = data.chatHistory || [];
+                        if (history.length === 0) {
+                            window_.innerHTML = '<div class="ai-empty-state">ابدأ محادثة مع الذكاء الاصطناعي أو عيّن مدة للتنفيذ التلقائي</div>';
+                            return;
+                        }
+                        window_.innerHTML = '';
+                        history.forEach(item => {
+                            const box = document.createElement('div');
+                            box.className = 'ai-message ' + (item.role === 'user' ? 'ai-message-user' : 'ai-message-assistant');
+                            box.innerHTML = '<div class="ai-meta">' + (item.role === 'user' ? 'أنت' : 'المساعد') + '</div><div>' + escapeHtml(item.text) + '</div>';
+                            window_.appendChild(box);
+                        });
+                        window_.scrollTop = window_.scrollHeight;
+                    }).catch(() => {});
+                }
+
+                function sendAIMessage() {
+                    const input = document.getElementById('aiUserMessage');
+                    const message = input.value.trim();
+                    if (!message) return;
+                    input.value = '';
+                    fetch('/api/ai/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message })
+                    }).then(r => r.json()).then(data => {
+                        renderAIChat();
+                        if (data.success) {
+                            if (!aiPollInterval) {
+                                aiPollInterval = setInterval(renderAIChat, 1000);
+                            }
+                        } else {
+                            alert(data.message || '❌ خطأ');
+                        }
+                    });
+                }
+
+                function saveGeminiKey() {
+                    const key = document.getElementById('geminiApiKey').value.trim();
+                    fetch('/api/ai/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ apiKey: key })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم الحفظ');
+                    });
+                }
+
+                function startAIAuto() {
+                    const duration = document.getElementById('aiDuration').value || 30;
+                    fetch('/api/ai/auto/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ durationMinutes: Number(duration) })
+                    }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم التشغيل');
+                        renderAIChat();
+                    });
+                }
+
+                function stopAIAuto() {
+                    fetch('/api/ai/auto/stop', { method: 'POST' }).then(r => r.json()).then(data => {
+                        alert(data.message || '✅ تم الإيقاف');
+                        renderAIChat();
+                    });
+                }
+
+                function clearAIChat() {
+                    fetch('/api/ai/clear', { method: 'POST' }).then(r => r.json()).then(data => {
+                        renderAIChat();
+                    });
+                }
+
+                document.getElementById('geminiApiKey').value = '';
 
                 function syncTargetIds() {
                     const ids = Array.from(document.querySelectorAll('.target-chip')).map(chip => chip.dataset.targetId);
@@ -3093,6 +3286,71 @@ app.post('/api/delete-messages', async (req, res) => {
     });
 
     res.json(result || { success: false, message: '⚠️ لم يتم حذف الرسائل' });
+});
+
+app.get('/api/ai/state', (req, res) => {
+    const state = {
+        success: true,
+        apiKey: botState.config?.geminiApiKey ? '••••••••' : '',
+        chatHistory: botState.aiChatHistory || [],
+        autoMode: !!botState.aiAutoMode,
+        status: botState.aiStatus || 'idle',
+        autoEndTime: botState.aiAutoEndTime || null
+    };
+    res.json(state);
+});
+
+app.post('/api/ai/chat', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+    const { message } = req.body || {};
+    if (!message || !String(message).trim()) {
+        return res.json({ success: false, message: '⚠️ أدخل رسالة' });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('aiChatResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('aiChatResult', onDone);
+        global.botEmitter.emit('aiChat', { message: String(message).trim() }, onDone);
+    });
+
+    res.json(result || { success: false, message: '⚠️ لم يتم تنفيذ الأمر' });
+});
+
+app.post('/api/ai/config', express.json(), (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+    const { apiKey } = req.body || {};
+    global.botEmitter.emit('aiSetApiKey', apiKey);
+    res.json({ success: true, message: '✅ تم حفظ مفتاح API' });
+});
+
+app.post('/api/ai/auto/start', express.json(), (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, message: '⚠️ البوت غير متاح' });
+    }
+    const { durationMinutes } = req.body || {};
+    global.botEmitter.emit('aiSetAutoMode', { durationMinutes: Number(durationMinutes) || 30 });
+    res.json({ success: true, message: '✅ تم تشغيل الوضع التلقائي' });
+});
+
+app.post('/api/ai/auto/stop', (req, res) => {
+    if (global.botEmitter) {
+        global.botEmitter.emit('aiStopAutoMode');
+    }
+    res.json({ success: true, message: '✅ تم إيقاف الوضع التلقائي' });
+});
+
+app.post('/api/ai/clear', (req, res) => {
+    if (global.botEmitter) {
+        global.botEmitter.emit('aiClearHistory');
+    }
+    res.json({ success: true, message: '✅ تم مسح المحادثة' });
 });
 
 app.listen(port, () => {

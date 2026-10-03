@@ -14,6 +14,7 @@ const defaultConfig = {
     guildId: process.env.GUILD_ID || "",
     afkChannelId: process.env.AFK_CHANNEL_ID || "1496645738086531194",
     targetGuildId: process.env.TARGET_GUILD_ID || "1264561928034975775",
+    geminiApiKey: process.env.GEMINI_API_KEY || "",
 
     task1Channel: "1507460885583626351",
     task1Msg: "!ذكريات",
@@ -86,6 +87,12 @@ let planBInterval = null;
 let isPlanBRunning = false;
 let task3Index = 0;
 
+let aiChatHistory = [];
+let aiAutoMode = false;
+let aiAutoTimer = null;
+let aiAutoEndTime = null;
+let aiStatus = 'idle';
+
 let stats = {
     totalSent: 0,
     task1CountLog: 0,
@@ -106,7 +113,11 @@ const syncState = () => {
         isTaskRunning,
         taskStates,
         stats,
-        config
+        config,
+        aiChatHistory,
+        aiAutoMode,
+        aiStatus,
+        aiAutoEndTime
     });
 };
 
@@ -211,9 +222,251 @@ global.botEmitter.on('togglePlanB', () => {
     syncState();
 });
 
+const AVAILABLE_ACTIONS = [
+    { name: 'send_message', description: 'إرسال رسالة لقناة ديسكورد', params: ['channelId', 'message'] },
+    { name: 'toggle_task', description: 'تشغيل/إيقاف مهمة', params: ['taskName'] },
+    { name: 'join_voice', description: 'الدخول لروم صوتي', params: ['channelId'] },
+    { name: 'leave_voice', description: 'الخروج من الروم الصوتي', params: [] },
+    { name: 'play_casino', description: 'لعب لعبة كازينو', params: ['game', 'bet'] },
+    { name: 'send_plan_b', description: 'إرسال رسالة الخطة ب', params: [] },
+    { name: 'wait', description: 'انتظار لعدد الثواني', params: ['seconds'] },
+    { name: 'repeat_action', description: 'تكرار action لعدد مرات', params: ['action', 'times'] }
+];
+
+const buildActionPrompt = () => {
+    const lines = AVAILABLE_ACTIONS.map(a => `- ${a.name}(${a.params.join(', ')}): ${a.description}`);
+    return `أنت مساعد ذكاء اصطناعي يتحكم بسيلف بوت ديسكورد. يمكنك تنفيذ الأActions التالية:\n${lines.join('\n')}\n\nإذا كنت تريد تنفيذ action، رد بهذا الشكل فقط:\nACTION: اسم_الاكشن\nPARAMS: {"param1": "value1", "param2": "value2"}\n\nإذا كنت تريد محادثة عادية، رد بالعربية بلا ACTION.`;
+};
+
+const callGemini = async (userMessage) => {
+    const apiKey = config.geminiApiKey;
+    if (!apiKey) return { type: 'error', message: '⚠️ لم يتم تعيين مفتاح Gemini API' };
+
+    const contents = [
+        { role: 'user', parts: [{ text: buildActionPrompt() }] },
+        ...aiChatHistory.slice(-10).map(m => ({
+            role: m.role === 'user' ? 'user' : 'model',
+            parts: [{ text: m.text }]
+        })),
+        { role: 'user', parts: [{ text: userMessage }] }
+    ];
+
+    try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents })
+        });
+
+        const data = await response.json();
+        if (!data.candidates || !data.candidates[0]?.content?.parts?.[0]?.text) {
+            return { type: 'error', message: '⚠️ خطأ في الاستجابة من Gemini' };
+        }
+
+        const text = data.candidates[0].content.parts[0].text.trim();
+        const actionMatch = text.match(/ACTION:\s*(\w+)\s*PARAMS:\s*({.*})/s);
+
+        if (actionMatch) {
+            const actionName = actionMatch[1].trim();
+            const actionParams = JSON.parse(actionMatch[2].trim());
+            return { type: 'action', action: actionName, params: actionParams, raw: text };
+        }
+
+        return { type: 'chat', message: text };
+    } catch (e) {
+        return { type: 'error', message: `❌ خطأ: ${e.message}` };
+    }
+};
+
+const executeAIAction = async (action, params) => {
+    switch (action) {
+        case 'send_message': {
+            const channelId = String(params.channelId || '').trim();
+            const message = String(params.message || '').trim();
+            if (!channelId || !message) return { success: false, message: '⚠️ يجب تحديد channelId و message' };
+            const channel = client.channels.cache.get(channelId);
+            if (!channel || !channel.send) return { success: false, message: '⚠️ القناة غير موجودة' };
+            await channel.send(message);
+            stats.totalSent += 1;
+            stats.lastActiveTime = new Date().toLocaleString('ar-SA');
+            return { success: true, message: `✅ تم إرسال الرسالة للقناة ${channelId}` };
+        }
+        case 'toggle_task': {
+            const taskName = String(params.taskName || '').trim().toLowerCase();
+            if (!taskStates[taskName]) return { success: false, message: `⚠️ المهمة ${taskName} غير موجودة` };
+            taskStates[taskName] = !taskStates[taskName];
+            if (taskStates[taskName]) {
+                if (taskName === 'task5') runTaskInOrder(taskName, runTask5);
+                else {
+                    runTaskInOrder(taskName, taskFunctions[taskName]);
+                    scheduleSingleTask(taskName, taskFunctions[taskName]);
+                }
+            } else {
+                if (taskName === 'task5') task5Stopped = true;
+                else if (taskTimers[taskName]) {
+                    clearTimeout(taskTimers[taskName]);
+                    taskTimers[taskName] = null;
+                }
+            }
+            syncState();
+            return { success: true, message: `✅ تم ${taskStates[taskName] ? 'تشغيل' : 'إيقاف'} المهمة ${taskName}` };
+        }
+        case 'join_voice': {
+            const channelId = String(params.channelId || config.afkChannelId || '').trim();
+            if (!channelId) return { success: false, message: '⚠️ لم يتم تحديد روم صوتي' };
+            const guild = client.guilds.cache.get(config.guildId);
+            if (!guild) return { success: false, message: '⚠️ السيرفر غير موجود' };
+            const channel = guild.channels.cache.get(channelId);
+            if (!channel || channel.type !== 'GUILD_VOICE') return { success: false, message: '⚠️ الروم الصوتي غير موجود' };
+            const existing = getVoiceConnection(guild.id);
+            if (existing) existing.destroy();
+            joinVoiceChannel({ channelId, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator, selfMute: true, selfDeaf: false });
+            isVoiceActive = true;
+            syncState();
+            return { success: true, message: `✅ تم الدخول للروم الصوتي ${channelId}` };
+        }
+        case 'leave_voice': {
+            const conn = getVoiceConnection(config.guildId);
+            if (conn) conn.destroy();
+            isVoiceActive = false;
+            syncState();
+            return { success: true, message: '✅ تم الخروج من الروم الصوتي' };
+        }
+        case 'play_casino': {
+            const game = String(params.game || '').trim();
+            const bet = Math.max(1000, Math.floor(Number(params.bet) / 1000) * 1000);
+            if (!game) return { success: false, message: '⚠️ يجب تحديد اسم اللعبة' };
+            if (!config.task5Channel) return { success: false, message: '⚠️ لم يتم تعيين روم الكازينو' };
+            const message = `!كازينو ${game} ${bet}`;
+            await sendChannelMessage(config.task5Channel, message, 'مهمة 5 - AI');
+            stats.task5CountLog += 1;
+            return { success: true, message: `🎰 تم لعب ${game} بمبلغ ${bet}` };
+        }
+        case 'send_plan_b': {
+            if (!config.planBChannel || !config.planBMsg) return { success: false, message: '⚠️ لم يتم تعيين الخطة ب' };
+            await sendChannelMessage(config.planBChannel, config.planBMsg, 'خطة ب - AI');
+            stats.planBCountLog += 1;
+            return { success: true, message: '✅ تم إرسال رسالة الخطة ب' };
+        }
+        case 'wait': {
+            const seconds = Math.max(1, Number(params.seconds) || 5);
+            await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+            return { success: true, message: `⏳ انتظرت ${seconds} ثانية` };
+        }
+        case 'repeat_action': {
+            const times = Math.max(1, Math.min(20, Number(params.times) || 3));
+            const subAction = params.action;
+            const subParams = params.params || {};
+            const results = [];
+            for (let i = 0; i < times; i++) {
+                const result = await executeAIAction(subAction, subParams);
+                results.push(result.message);
+                if (i < times - 1) await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            return { success: true, message: `🔁 تم تكرار الإجراء ${times} مرات` };
+        }
+        default:
+            return { success: false, message: `⚠️ الإجراء ${action} غير معروف` };
+    }
+};
+
+const processAIMessage = async (userMessage) => {
+    aiStatus = 'thinking';
+    syncState();
+
+    const response = await callGemini(userMessage);
+    aiChatHistory.push({ role: 'user', text: userMessage });
+    aiChatHistory.push({ role: 'assistant', text: response.type === 'action' ? response.raw : response.message || response.raw });
+
+    if (aiChatHistory.length > 50) {
+        aiChatHistory = aiChatHistory.slice(-50);
+    }
+
+    if (response.type === 'error') {
+        aiStatus = 'error';
+        syncState();
+        return { type: 'error', message: response.message };
+    }
+
+    if (response.type === 'chat') {
+        aiStatus = 'idle';
+        syncState();
+        return { type: 'chat', message: response.message };
+    }
+
+    const result = await executeAIAction(response.action, response.params);
+    aiStatus = result.success ? 'idle' : 'error';
+    syncState();
+    return { type: 'action', ...result, action: response.action, params: response.params };
+};
+
+const stopAIAutoMode = () => {
+    if (aiAutoTimer) {
+        clearTimeout(aiAutoTimer);
+        aiAutoTimer = null;
+    }
+    aiAutoMode = false;
+    aiAutoEndTime = null;
+    aiStatus = 'idle';
+    syncState();
+};
+
+const runAIAutoMode = async () => {
+    if (!aiAutoMode || !isBotRunning) {
+        stopAIAutoMode();
+        return;
+    }
+
+    if (aiAutoEndTime && Date.now() >= aiAutoEndTime) {
+        stopAIAutoMode();
+        return;
+    }
+
+    try {
+        const prompt = 'خطط وابدأ بتنفيذ مهام البوت لمدة 5 دقائق. ابدأ بإرسال ذكريات ثم بخشيش ثم عمل/جريمة ثم هجوم ثم كازينو. كل مهمة مرة واحدة ثم انتظر.';
+        const response = await processAIMessage(prompt);
+        console.log('🤖 AI Auto:', response.message || response.raw);
+    } catch (e) {
+        console.error('❌ AI Auto error:', e);
+    }
+
+    aiAutoTimer = setTimeout(runAIAutoMode, 30000);
+};
+
+global.botEmitter.on('aiChat', async (payload, cb) => {
+    const result = await processAIMessage(payload.message || '');
+    if (global.botEmitter) global.botEmitter.emit('aiChatResult', result);
+    if (typeof cb === 'function') cb(result);
+});
+
+global.botEmitter.on('aiSetApiKey', (apiKey) => {
+    config.geminiApiKey = String(apiKey || '').trim();
+    saveConfig();
+    syncState();
+});
+
+global.botEmitter.on('aiSetAutoMode', ({ durationMinutes }) => {
+    stopAIAutoMode();
+    aiAutoMode = true;
+    aiAutoEndTime = Date.now() + (Number(durationMinutes) || 30) * 60 * 1000;
+    aiStatus = 'auto';
+    syncState();
+    runAIAutoMode();
+});
+
+global.botEmitter.on('aiStopAutoMode', () => {
+    stopAIAutoMode();
+});
+
+global.botEmitter.on('aiClearHistory', () => {
+    aiChatHistory = [];
+    syncState();
+});
+
 global.botEmitter.on('updateConfig', (newCfg) => {
     if (newCfg.afkChannelId) config.afkChannelId = newCfg.afkChannelId;
     if (newCfg.targetGuildId) config.targetGuildId = newCfg.targetGuildId;
+    if (newCfg.geminiApiKey !== undefined) config.geminiApiKey = String(newCfg.geminiApiKey || '').trim();
     saveConfig();
     syncState();
 });
