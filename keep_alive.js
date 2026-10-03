@@ -1229,6 +1229,7 @@ app.get('/', (req, res) => {
                         </div>
                         <div class="btn-group">
                             <button type="button" class="btn btn-primary" data-action="voice" onclick="toggleAction('voice', this)">${botState.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت'}</button>
+                            <button type="button" class="btn ${botState.autoRejoinEnabled ? 'btn-danger' : 'btn-success'}" id="autoRejoinBtn" onclick="toggleAutoRejoin(this)">${botState.autoRejoinEnabled ? '⏹ إيقاف اعادة الاتصال' : '▶ تشغيل اعادة الاتصال'}</button>
                         </div>
                     </div>
 
@@ -1502,15 +1503,6 @@ app.get('/', (req, res) => {
                         </div>
                     </div>
 
-                    <div class="card">
-                        <h3>🔄 إعادة الاتصال التلقائي</h3>
-                        <div class="task-row">
-                            <span class="task-name"><span class="task-number">⚡</span>الوضع الحالي</span>
-                            <span class="task-state" id="autoRejoinState">${botState.autoRejoinEnabled ? 'مفعل' : 'متوقف'}</span>
-                            <button type="button" class="btn ${botState.autoRejoinEnabled ? 'btn-danger' : 'btn-success'}" id="autoRejoinBtn" onclick="toggleAutoRejoin(this)">${botState.autoRejoinEnabled ? '⏹ إيقاف' : '▶ تشغيل'}</button>
-                        </div>
-                    </div>
-
                     <div class="card" id="voiceChannelCard" style="display:none;">
                         <h3>🎙️ إعدادات الروم <span id="voiceChannelName" style="color:var(--gold);"></span></h3>
                         <form id="voiceChannelForm" onsubmit="saveVoiceChannelSettings(event)">
@@ -1691,10 +1683,8 @@ app.get('/', (req, res) => {
                             voiceBtn.textContent = s.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت';
                         }
                         const autoRejoinBtn = document.getElementById('autoRejoinBtn');
-                        const autoRejoinState = document.getElementById('autoRejoinState');
-                        if (autoRejoinBtn && autoRejoinState && s.autoRejoinEnabled !== undefined) {
-                            autoRejoinState.textContent = s.autoRejoinEnabled ? 'مفعل' : 'متوقف';
-                            autoRejoinBtn.textContent = s.autoRejoinEnabled ? '⏹ إيقاف' : '▶ تشغيل';
+                        if (autoRejoinBtn && s.autoRejoinEnabled !== undefined) {
+                            autoRejoinBtn.textContent = s.autoRejoinEnabled ? '⏹ إيقاف اعادة الاتصال' : '▶ تشغيل اعادة الاتصال';
                             autoRejoinBtn.classList.toggle('btn-danger', s.autoRejoinEnabled);
                             autoRejoinBtn.classList.toggle('btn-success', !s.autoRejoinEnabled);
                         }
