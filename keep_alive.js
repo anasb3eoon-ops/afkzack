@@ -276,113 +276,6 @@ app.get('/', (req, res) => {
                     margin-bottom: 30px;
                 }
 
-                .dashboard-nav {
-                    display: flex;
-                    gap: 6px;
-                    padding: 6px;
-                    margin-bottom: 30px;
-                    border: 1px solid var(--line);
-                    background: linear-gradient(180deg, rgba(22, 26, 34, 0.95), rgba(13, 15, 20, 0.95));
-                    backdrop-filter: blur(16px);
-                    -webkit-backdrop-filter: blur(16px);
-                    overflow-x: auto;
-                    box-shadow:
-                        0 10px 30px rgba(0, 0, 0, 0.4),
-                        inset 0 1px 0 rgba(255, 255, 255, 0.04),
-                        inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-                    border-radius: 12px;
-                    position: relative;
-                }
-
-                .dashboard-nav::before {
-                    content: '';
-                    position: absolute;
-                    top: -1px;
-                    left: 10%;
-                    right: 10%;
-                    height: 1px;
-                    background: linear-gradient(90deg, transparent, var(--gold), transparent);
-                    opacity: 0.6;
-                }
-
-                .dashboard-nav button {
-                    flex: 1;
-                    min-width: 160px;
-                    padding: 14px 22px;
-                    border: 1px solid transparent;
-                    border-radius: 8px;
-                    background: transparent;
-                    color: var(--text-sub);
-                    cursor: pointer;
-                    font: inherit;
-                    font-weight: 700;
-                    font-size: 0.92rem;
-                    white-space: nowrap;
-                    transition: all 0.55s cubic-bezier(0.4, 0, 0.2, 1);
-                    position: relative;
-                    overflow: hidden;
-                    letter-spacing: 0.3px;
-                }
-
-                .dashboard-nav button::before {
-                    content: '';
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    width: 0;
-                    height: 0;
-                    background: radial-gradient(circle, rgba(214, 170, 72, 0.3), transparent 70%);
-                    border-radius: 50%;
-                    transform: translate(-50%, -50%);
-                    transition: width 0.5s ease, height 0.5s ease;
-                    pointer-events: none;
-                }
-
-                .dashboard-nav button:hover {
-                    color: var(--text-bright);
-                    background: rgba(255, 255, 255, 0.04);
-                    border-color: rgba(255, 255, 255, 0.08);
-                }
-
-                .dashboard-nav button:hover::before {
-                    width: 200px;
-                    height: 200px;
-                }
-
-                .dashboard-nav button.active {
-                    color: var(--gold-bright);
-                    background: linear-gradient(135deg, rgba(214, 170, 72, 0.18), rgba(214, 170, 72, 0.06));
-                    border-color: var(--gold-dim);
-                    box-shadow:
-                        0 6px 20px rgba(214, 170, 72, 0.25),
-                        inset 0 1px 0 rgba(214, 170, 72, 0.15),
-                        inset 0 0 0 1px rgba(214, 170, 72, 0.1);
-                }
-
-                .dashboard-nav button.active::after {
-                    content: '';
-                    position: absolute;
-                    bottom: 4px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    width: 30%;
-                    height: 2px;
-                    background: linear-gradient(90deg, transparent, var(--gold), var(--gold-bright), var(--gold), transparent);
-                    background-size: 200% 100%;
-                    border-radius: 2px;
-                    animation: goldShine 2s linear infinite;
-                    box-shadow: 0 0 8px var(--gold);
-                }
-
-                .dashboard-panel {
-                    display: none;
-                    animation: slideInFade 0.4s ease-out both;
-                }
-
-                .dashboard-panel.active {
-                    display: grid;
-                }
-
                 .task-manager,
                 .timing-manager {
                     min-height: 100%;
@@ -1191,27 +1084,216 @@ app.get('/', (req, res) => {
                 .panel[data-panel="dm"].active {
                     display: block !important;
                 }
+
+                .sidebar {
+                    width: 240px;
+                    background: linear-gradient(180deg, rgba(17, 20, 26, 0.98), rgba(10, 12, 16, 0.98));
+                    border-left: 1px solid var(--line);
+                    display: flex;
+                    flex-direction: column;
+                    position: fixed;
+                    top: 0;
+                    right: 0;
+                    bottom: 0;
+                    z-index: 100;
+                    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.4);
+                }
+
+                .sidebar-header {
+                    padding: 24px 20px;
+                    border-bottom: 1px solid var(--line);
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                .sidebar-logo {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 8px;
+                    background: linear-gradient(135deg, var(--gold), var(--gold-dim));
+                    display: grid;
+                    place-items: center;
+                    color: #fff;
+                    font-weight: 900;
+                    font-size: 1.1rem;
+                    box-shadow: 0 0 12px var(--gold-glow);
+                    flex: 0 0 36px;
+                }
+
+                .sidebar-title {
+                    font-weight: 800;
+                    font-size: 0.85rem;
+                    color: var(--text-bright);
+                    letter-spacing: 0.3px;
+                    line-height: 1.2;
+                }
+
+                .sidebar-nav {
+                    flex: 1;
+                    overflow-y: auto;
+                    padding: 12px 10px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                }
+
+                .sidebar-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    width: 100%;
+                    padding: 11px 14px;
+                    border: 1px solid transparent;
+                    border-radius: 8px;
+                    background: transparent;
+                    color: var(--text-soft);
+                    cursor: pointer;
+                    font: inherit;
+                    font-size: 0.88rem;
+                    font-weight: 600;
+                    text-align: right;
+                    transition: all 0.35s ease;
+                    position: relative;
+                }
+
+                .sidebar-item:hover {
+                    background: rgba(255, 255, 255, 0.04);
+                    border-color: var(--line);
+                    color: var(--text-bright);
+                }
+
+                .sidebar-item.active {
+                    background: linear-gradient(135deg, rgba(214, 170, 72, 0.18), rgba(214, 170, 72, 0.06));
+                    border-color: var(--gold-dim);
+                    color: var(--gold-bright);
+                    box-shadow: 0 0 14px rgba(214, 170, 72, 0.18);
+                }
+
+                .sidebar-icon {
+                    font-size: 1rem;
+                    width: 22px;
+                    text-align: center;
+                    flex: 0 0 22px;
+                }
+
+                .sidebar-label {
+                    flex: 1;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .sidebar-divider {
+                    height: 1px;
+                    background: var(--line);
+                    margin: 10px 6px;
+                }
+
+                .sidebar-section-title {
+                    padding: 6px 14px 8px;
+                    font-size: 0.68rem;
+                    font-weight: 700;
+                    color: var(--text-sub);
+                    letter-spacing: 0.6px;
+                    text-transform: uppercase;
+                }
+
+                .main-content {
+                    flex: 1;
+                    margin-right: 240px;
+                    min-height: 100vh;
+                    background: var(--bg-deep);
+                }
+
+                @media (max-width: 768px) {
+                    .sidebar {
+                        width: 100%;
+                        position: relative;
+                        height: auto;
+                        border-left: none;
+                        border-bottom: 1px solid var(--line);
+                    }
+                    .main-content {
+                        margin-right: 0;
+                    }
+                    .sidebar-nav {
+                        flex-direction: row;
+                        overflow-x: auto;
+                        padding: 8px;
+                        gap: 6px;
+                    }
+                    .sidebar-item {
+                        width: auto;
+                        white-space: nowrap;
+                    }
+                    .sidebar-divider {
+                        display: none;
+                    }
+                    .sidebar-section-title {
+                        display: none;
+                    }
+                }
             </style>
         </head>
         <body>
-            <div class="container">
-                <header>
-                    <h1>◆ لوحة التحكم ◆</h1>
-                    <p>نظام إدارة ديسكورد سيلفبوت المتقدم</p>
-                </header>
+            <div style="display:flex; min-height:100vh;">
+                <aside class="sidebar" id="sidebar">
+                    <div class="sidebar-header">
+                        <div class="sidebar-logo">◆</div>
+                        <div class="sidebar-title">لوحة التحكم</div>
+                    </div>
+                    <nav class="sidebar-nav">
+                        <button type="button" class="sidebar-item active" data-panel-target="overview">
+                            <span class="sidebar-icon">⚙️</span>
+                            <span class="sidebar-label">النظرة العامة</span>
+                        </button>
+                        <button type="button" class="sidebar-item" data-panel-target="tasks">
+                            <span class="sidebar-icon">⚡</span>
+                            <span class="sidebar-label">إدارة المهام</span>
+                        </button>
+                        <button type="button" class="sidebar-item" data-panel-target="channels">
+                            <span class="sidebar-icon">🎙️</span>
+                            <span class="sidebar-label">القنوات والرسائل</span>
+                        </button>
 
-                <nav class="dashboard-nav" aria-label="أقسام لوحة التحكم">
-                    <button type="button" class="active" data-panel-target="overview">⚙️ النظرة العامة</button>
-                    <button type="button" data-panel-target="tasks">⚡ إدارة المهام</button>
-                    <button type="button" data-panel-target="channels">🎙️ القنوات والرسائل</button>
-                    <button type="button" data-panel-target="dm">💬 المحادثات</button>
-                    <button type="button" data-panel-target="roles">🛡️ الرتب</button>
-                    <button type="button" data-panel-target="voice">🎙️ إدارة الرومات</button>
-                    <button type="button" data-panel-target="audit">📋 سجل التدقيق</button>
-                    <button type="button" data-panel-target="monitor">🛰️ المراقبة</button>
-                </nav>
+                        <div class="sidebar-divider"></div>
+                        <div class="sidebar-section-title">أدوات</div>
 
-                <div style="display:flex; flex-direction:column; gap:25px;">
+                        <button type="button" class="sidebar-item" data-panel-target="dm">
+                            <span class="sidebar-icon">💬</span>
+                            <span class="sidebar-label">المحادثات</span>
+                        </button>
+                        <button type="button" class="sidebar-item" data-panel-target="roles">
+                            <span class="sidebar-icon">🛡️</span>
+                            <span class="sidebar-label">الرتب</span>
+                        </button>
+                        <button type="button" class="sidebar-item" data-panel-target="voice">
+                            <span class="sidebar-icon">🎙️</span>
+                            <span class="sidebar-label">إدارة الرومات</span>
+                        </button>
+                        <button type="button" class="sidebar-item" data-panel-target="audit">
+                            <span class="sidebar-icon">📋</span>
+                            <span class="sidebar-label">سجل التدقيق</span>
+                        </button>
+
+                        <div class="sidebar-divider"></div>
+
+                        <button type="button" class="sidebar-item" data-panel-target="monitor">
+                            <span class="sidebar-icon">🛰️</span>
+                            <span class="sidebar-label">المراقبة</span>
+                        </button>
+                    </nav>
+                </aside>
+
+                <main class="main-content">
+                    <div class="container">
+                        <header>
+                            <h1>◆ لوحة التحكم ◆</h1>
+                            <p>نظام إدارة ديسكورد سيلفبوت المتقدم</p>
+                        </header>
+
+                        <div style="display:flex; flex-direction:column; gap:25px;">
                     <div class="grid panel active" data-panel="overview">
                     <div class="card">
                         <h3>⚙️ حالة النظام</h3>
@@ -1628,8 +1710,10 @@ app.get('/', (req, res) => {
                     </div>
                 </div>
             </div>
+        </main>
+    </div>
 
-            <script>
+    <script>
                 function pulseButton(btn) {
                     btn.classList.remove('pulse-anim');
                     void btn.offsetWidth;
