@@ -525,26 +525,6 @@ const startAITimerCountdown = () => {
     }, 1000);
 };
 
-const startAITimerCountdown = () => {
-    if (aiScheduledTimer) clearInterval(aiScheduledTimer);
-    aiScheduledTimer = setInterval(() => {
-        if (!aiScheduledTask) {
-            aiScheduledEndTime = null;
-            syncState();
-            return;
-        }
-        const remaining = Math.max(0, Math.ceil((aiScheduledTask.endTime - Date.now()) / 1000));
-        aiScheduledEndTime = aiScheduledTask.endTime;
-        syncState();
-        if (remaining <= 0) {
-            aiScheduledTask = null;
-            aiScheduledEndTime = null;
-            aiStatus = 'idle';
-            syncState();
-        }
-    }, 1000);
-};
-
 const stopAIAutoMode = () => {
     if (aiAutoTimer) {
         clearTimeout(aiAutoTimer);
