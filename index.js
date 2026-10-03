@@ -928,7 +928,7 @@ client.on('ready', () => {
 
 client.on('voiceStateUpdate', (oldState, newState) => {
     if (oldState.id !== client.user.id) return;
-    if (autoRejoinEnabled && isBotRunning && isVoiceActive && oldState.channelId === config.afkChannelId && newState.channelId !== config.afkChannelId) {
+    if (autoRejoinEnabled && isBotRunning && isVoiceActive && oldState.channelId && newState.channelId !== oldState.channelId) {
         setTimeout(connectToVoice, 3000);
     }
 });
