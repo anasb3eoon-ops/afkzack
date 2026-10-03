@@ -1229,7 +1229,6 @@ app.get('/', (req, res) => {
                         </div>
                         <div class="btn-group">
                             <button type="button" class="btn btn-primary" data-action="voice" onclick="toggleAction('voice', this)">${botState.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت'}</button>
-                            <button type="button" class="btn ${botState.autoRejoinEnabled ? 'btn-danger' : 'btn-success'}" id="autoRejoinBtn" onclick="toggleAutoRejoin(this)">${botState.autoRejoinEnabled ? '⏹ إيقاف اعادة الاتصال' : '▶ تشغيل اعادة الاتصال'}</button>
                         </div>
                     </div>
 
@@ -1647,11 +1646,6 @@ app.get('/', (req, res) => {
                     fetch('/api/toggle-planb', { method: 'GET' });
                 }
 
-                function toggleAutoRejoin(btn) {
-                    pulseButton(btn);
-                    fetch('/api/toggle-auto-rejoin', { method: 'GET' });
-                }
-
                 function toggleAction(action, btn) {
                     pulseButton(btn);
                     fetch('/api/toggle/' + action, { method: 'GET' });
@@ -1681,12 +1675,6 @@ app.get('/', (req, res) => {
                         const voiceBtn = document.querySelector('[data-action="voice"]');
                         if (voiceBtn) {
                             voiceBtn.textContent = s.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت';
-                        }
-                        const autoRejoinBtn = document.getElementById('autoRejoinBtn');
-                        if (autoRejoinBtn && s.autoRejoinEnabled !== undefined) {
-                            autoRejoinBtn.textContent = s.autoRejoinEnabled ? '⏹ إيقاف اعادة الاتصال' : '▶ تشغيل اعادة الاتصال';
-                            autoRejoinBtn.classList.toggle('btn-danger', s.autoRejoinEnabled);
-                            autoRejoinBtn.classList.toggle('btn-success', !s.autoRejoinEnabled);
                         }
                     }).catch(() => {});
                 }
@@ -2643,13 +2631,6 @@ app.get('/api/toggle-task/:task', (req, res) => {
 app.get('/api/toggle-planb', (req, res) => {
     if (global.botEmitter) {
         global.botEmitter.emit('togglePlanB');
-    }
-    res.json({ success: true });
-});
-
-app.get('/api/toggle-auto-rejoin', (req, res) => {
-    if (global.botEmitter) {
-        global.botEmitter.emit('toggleAutoRejoin');
     }
     res.json({ success: true });
 });

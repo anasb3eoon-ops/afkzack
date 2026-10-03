@@ -85,7 +85,6 @@ const taskStates = { task1: false, task2: false, task3: false, task4: false, tas
 let planBInterval = null;
 let isPlanBRunning = false;
 let task3Index = 0;
-let autoRejoinEnabled = false;
 
 let stats = {
     totalSent: 0,
@@ -107,12 +106,9 @@ const syncState = () => {
         isTaskRunning,
         taskStates,
         stats,
-        config,
-        autoRejoinEnabled
+        config
     });
 };
-
-let isConnectingVoice = false;
 
 const connectToVoice = (targetChannelId = null) => {
     if (!isVoiceActive || !config.guildId) return;
@@ -122,7 +118,6 @@ const connectToVoice = (targetChannelId = null) => {
     const guild = client.guilds.cache.get(config.guildId);
     if (!guild) return;
 
-    isConnectingVoice = true;
     try {
         const existingConnection = getVoiceConnection(guild.id);
         if (existingConnection) existingConnection.destroy();
@@ -136,10 +131,6 @@ const connectToVoice = (targetChannelId = null) => {
         });
         console.log(`🔊 تم الاتصال بالروم: ${channelToJoin}`);
     } catch (e) { console.error("❌ خطأ اتصال صوتي:", e); }
-
-    setTimeout(() => {
-        isConnectingVoice = false;
-    }, 1000);
 };
 
 global.botEmitter.on('control', (action) => {
@@ -217,11 +208,6 @@ global.botEmitter.on('togglePlanB', () => {
     isPlanBRunning = !isPlanBRunning;
     if (isPlanBRunning) startPlanBLoop();
     else stopPlanBLoop();
-    syncState();
-});
-
-global.botEmitter.on('toggleAutoRejoin', () => {
-    autoRejoinEnabled = !autoRejoinEnabled;
     syncState();
 });
 
@@ -933,13 +919,6 @@ client.on('ready', () => {
     setInterval(syncState, 5000);
 });
 
-client.on('voiceStateUpdate', (oldState, newState) => {
-    if (oldState.id !== client.user.id) return;
-    if (isConnectingVoice) return;
-    if (autoRejoinEnabled && isBotRunning && isVoiceActive && oldState.channelId && newState.channelId !== oldState.channelId) {
-        setTimeout(connectToVoice, 3000);
-    }
-});
 
 client.on('messageCreate', async (message) => {
     if (!message || !message.content || message.author.id !== client.user.id) return;
