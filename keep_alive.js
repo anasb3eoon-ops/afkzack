@@ -1312,6 +1312,83 @@ app.get('/', (req, res) => {
                 color: var(--text-sub);
                 margin-bottom: 4px;
             }
+
+            .ai-timer-widget {
+                display: flex;
+                gap: 16px;
+                align-items: center;
+                padding: 16px;
+                border: 1px solid var(--gold-dim);
+                background: linear-gradient(135deg, rgba(214, 170, 72, 0.18), rgba(214, 170, 72, 0.04));
+                border-radius: 14px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+                flex-wrap: wrap;
+            }
+
+            .ai-timer-ring {
+                position: relative;
+                width: 120px;
+                height: 120px;
+                flex: 0 0 120px;
+            }
+
+            .ai-timer-ring svg {
+                width: 100%;
+                height: 100%;
+                transform: rotate(-90deg);
+            }
+
+            .ai-timer-bg {
+                fill: none;
+                stroke: rgba(255, 255, 255, 0.08);
+                stroke-width: 8;
+            }
+
+            .ai-timer-progress {
+                fill: none;
+                stroke: var(--gold-bright);
+                stroke-width: 8;
+                stroke-linecap: round;
+                transition: stroke-dashoffset 1s linear;
+            }
+
+            .ai-timer-text {
+                position: absolute;
+                inset: 0;
+                display: grid;
+                place-items: center;
+                text-align: center;
+            }
+
+            .ai-timer-label {
+                font-size: 0.68rem;
+                color: var(--text-sub);
+                font-weight: 700;
+            }
+
+            .ai-timer-value {
+                font-size: 1.4rem;
+                font-weight: 900;
+                color: var(--gold-bright);
+                letter-spacing: 0.5px;
+            }
+
+            .ai-timer-info {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .ai-timer-title {
+                font-weight: 800;
+                font-size: 0.92rem;
+                color: var(--text-bright);
+            }
+
+            .ai-timer-status {
+                font-size: 0.82rem;
+                color: var(--text-soft);
+            }
         </style>
         </head>
         <body>
@@ -1804,19 +1881,27 @@ app.get('/', (req, res) => {
                             </div>
                         </div>
                         <div class="ai-chat-window" id="aiChatWindow">
-                            <div class="ai-empty-state">ابدأ محادثة مع الذكاء الاصطناعي أو عيّن مدة للتنفيذ التلقائي</div>
+                            <div class="ai-empty-state">ابدأ محادثة مع الذكاء الاصطناعي أو اطلب مهمة مع توقيت مثل: اكتب بعد 5 دقائق !ذكريات</div>
                         </div>
-                        <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
-                            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                                <input type="text" id="aiUserMessage" placeholder="اكتب مهمة أو سؤال..." style="flex:1; min-width:220px;" onkeydown="if(event.key==='Enter') sendAIMessage()">
-                                <button type="button" class="btn btn-primary" onclick="sendAIMessage()">إرسال</button>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:14px;">
+                            <input type="text" id="aiUserMessage" placeholder="اكتب مهمة أو سؤال... مثال: بعد 10 ثواني !كازينو بلاكجاك 10000" style="flex:1; min-width:220px;" onkeydown="if(event.key==='Enter') sendAIMessage()">
+                            <button type="button" class="btn btn-primary" onclick="sendAIMessage()">إرسال</button>
+                        </div>
+                    </div>
+                    <div class="ai-timer-widget" id="aiTimerWidget" style="display:none;">
+                        <div class="ai-timer-ring">
+                            <svg viewBox="0 0 120 120">
+                                <circle class="ai-timer-bg" cx="60" cy="60" r="52"></circle>
+                                <circle class="ai-timer-progress" id="aiTimerCircle" cx="60" cy="60" r="52" stroke-dasharray="326.73" stroke-dashoffset="0"></circle>
+                            </svg>
+                            <div class="ai-timer-text">
+                                <div class="ai-timer-label">المتبقي</div>
+                                <div class="ai-timer-value" id="aiTimerValue">00:00</div>
                             </div>
-                            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                                <input type="number" id="aiDuration" placeholder="مدة الوضع التلقائي (دقائق)" min="1" value="30" style="width:220px;">
-                                <button type="button" class="btn btn-success" onclick="startAIAuto()">▶ تشغيل تلقائي</button>
-                                <button type="button" class="btn btn-danger" onclick="stopAIAuto()">⏹ إيقاف</button>
-                                <button type="button" class="btn btn-warning" onclick="clearAIChat()">🗑️ مسح</button>
-                            </div>
+                        </div>
+                        <div class="ai-timer-info">
+                            <div class="ai-timer-title" id="aiTimerTitle">مهمة مجدولة</div>
+                            <div class="ai-timer-status" id="aiTimerStatus">جاري العد...</div>
                         </div>
                     </div>
                 </div>
@@ -1871,7 +1956,33 @@ app.get('/', (req, res) => {
                         if (voiceBtn) {
                             voiceBtn.textContent = s.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت';
                         }
+                        updateAITimerWidget(s);
                     }).catch(() => {});
+                }
+
+                function updateAITimerWidget(s) {
+                    const widget = document.getElementById('aiTimerWidget');
+                    const circle = document.getElementById('aiTimerCircle');
+                    const value = document.getElementById('aiTimerValue');
+                    const title = document.getElementById('aiTimerTitle');
+                    const status = document.getElementById('aiTimerStatus');
+                    if (!widget || !circle || !value || !title || !status) return;
+                    const endTime = s.aiAutoEndTime || s.aiScheduledEndTime || null;
+                    const hasTimer = !!endTime && Date.now() < endTime;
+                    widget.style.display = hasTimer ? 'flex' : 'none';
+                    if (!hasTimer) return;
+                    const total = 1000;
+                    const remaining = Math.max(0, endTime - Date.now());
+                    const progress = remaining / total;
+                    const radius = 52;
+                    const circumference = 2 * Math.PI * radius;
+                    const offset = circumference * (1 - progress);
+                    circle.style.strokeDashoffset = String(offset);
+                    const minutes = Math.floor(remaining / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    value.textContent = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+                    title.textContent = s.aiScheduledTask && s.aiScheduledTask.taskMessage ? s.aiScheduledTask.taskMessage : 'مهمة مجدولة';
+                    status.textContent = 'جاري العد...';
                 }
 
                 setInterval(refreshState, 300);

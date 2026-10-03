@@ -92,6 +92,9 @@ let aiAutoMode = false;
 let aiAutoTimer = null;
 let aiAutoEndTime = null;
 let aiStatus = 'idle';
+let aiScheduledTask = null;
+let aiScheduledEndTime = null;
+let aiScheduledTimer = null;
 
 let stats = {
     totalSent: 0,
@@ -117,7 +120,9 @@ const syncState = () => {
         aiChatHistory,
         aiAutoMode,
         aiStatus,
-        aiAutoEndTime
+        aiAutoEndTime,
+        aiScheduledEndTime,
+        aiScheduledTask
     });
 };
 
@@ -223,19 +228,41 @@ global.botEmitter.on('togglePlanB', () => {
 });
 
 const AVAILABLE_ACTIONS = [
-    { name: 'send_message', description: 'إرسال رسالة لقناة ديسكورد', params: ['channelId', 'message'] },
-    { name: 'toggle_task', description: 'تشغيل/إيقاف مهمة', params: ['taskName'] },
+    { name: 'send_message', description: 'إرسال رسالة نصية لقناة ديسكورد', params: ['channelId', 'message'] },
+    { name: 'toggle_task', description: 'تشغيل/إيقاف مهمة من المهام', params: ['taskName'] },
     { name: 'join_voice', description: 'الدخول لروم صوتي', params: ['channelId'] },
-    { name: 'leave_voice', description: 'الخروج من الروم الصوتي', params: [] },
-    { name: 'play_casino', description: 'لعب لعبة كازينو', params: ['game', 'bet'] },
+    { name: 'leave_voice', description: 'الخروج من الروم الصوتي الحالي', params: [] },
+    { name: 'play_casino', description: 'لعب لعبة كازينو برقم مضاعف 1000', params: ['game', 'bet'] },
     { name: 'send_plan_b', description: 'إرسال رسالة الخطة ب', params: [] },
     { name: 'wait', description: 'انتظار لعدد الثواني', params: ['seconds'] },
-    { name: 'repeat_action', description: 'تكرار action لعدد مرات', params: ['action', 'times'] }
+    { name: 'repeat_action', description: 'تكرار إجراء لعدد مرات', params: ['action', 'times'] },
+    { name: 'custom', description: 'تنفيذ مهمة مخصصة بوصف نصي حر', params: ['description'] }
 ];
 
 const buildActionPrompt = () => {
     const lines = AVAILABLE_ACTIONS.map(a => `- ${a.name}(${a.params.join(', ')}): ${a.description}`);
-    return `أنت مساعد ذكاء اصطناعي يتحكم بسيلف بوت ديسكورد. يمكنك تنفيذ الأActions التالية:\n${lines.join('\n')}\n\nإذا كنت تريد تنفيذ action، رد بهذا الشكل فقط:\nACTION: اسم_الاكشن\nPARAMS: {"param1": "value1", "param2": "value2"}\n\nإذا كنت تريد محادثة عادية، رد بالعربية بلا ACTION.`;
+    return `أنت مساعد ذكاء اصطناعي يتحدث بالعربية بشكل طبيعي وودود. يمكنك مساعدة المستخدم في الدردشة العادية أو تنفيذ مهام في ديسكورد.
+
+المهام المتاحة:
+${lines.join('\n')}
+
+قواعد أساسية:
+1. إذا كان المستخدم يتحدث معك عادي أو يسألك سؤال أو يريد نقاش، رد عليه بالعربية بشكل طبيعي وودون استخدام ACTION.
+2. إذا كان المستخدم يطلب منك تنفيذ مهمة في الديسكورد، استخدم ACTION فقط إذا كانت المهمة واضحة وتتطلب شيئا محددا.
+3. إذا لم تكن متأكد من المهمة أو لم تكن واضحة، رد على المستخدم بالعربية واطلب منه توضيح المهمة.
+4. لا تشرح للمستخدم كيف يعمل النظام أو ما هي الاعمال المتاحة، فقط نفذ أو رد بشكل طبيعي.
+
+أمثلة:
+المستخدم: كيف حالك؟
+الرد: الحمد لله،一切良好! كيف يمكنني مساعدتك اليوم؟
+
+المستخدم: ادخل للروم 123456789
+الرد: ACTION: join_voice
+PARAMS: {"channelId": "123456789"}
+
+المستخدم: اذهب للروم الصوتي الفلاني وافعل شيئا مخصصا
+الرد: ACTION: custom
+PARAMS: {"description": "ادخل للروم الصوتي الفلاني وافعل شيئا مخصصا"}`;
 };
 
 const callGemini = async (userMessage) => {
@@ -365,6 +392,28 @@ const executeAIAction = async (action, params) => {
             }
             return { success: true, message: `🔁 تم تكرار الإجراء ${times} مرات` };
         }
+        case 'custom': {
+            const description = String(params.description || '').trim();
+            if (!description) return { success: false, message: '⚠️ لم يتم تحديد وصف المهمة' };
+            const channelIds = [...description.matchAll(/\b\d{17,20}\b/g)].map(m => m[0]);
+            if (channelIds.length > 0) {
+                const guild = client.guilds.cache.get(config.guildId);
+                if (guild) {
+                    for (const id of channelIds) {
+                        const ch = guild.channels.cache.get(id);
+                        if (ch && ch.type === 'GUILD_VOICE') {
+                            const existing = getVoiceConnection(guild.id);
+                            if (existing) existing.destroy();
+                            joinVoiceChannel({ channelId: id, guildId: guild.id, adapterCreator: guild.voiceAdapterCreator, selfMute: true, selfDeaf: false });
+                            isVoiceActive = true;
+                            syncState();
+                            return { success: true, message: `✅ تم الدخول للروم الصوتي ${id} كما طلبت` };
+                        }
+                    }
+                }
+            }
+            return { success: true, message: `📝 تم تسجيل المهمة المخصصة: ${description}` };
+        }
         default:
             return { success: false, message: `⚠️ الإجراء ${action} غير معروف` };
     }
@@ -373,6 +422,36 @@ const executeAIAction = async (action, params) => {
 const processAIMessage = async (userMessage) => {
     aiStatus = 'thinking';
     syncState();
+
+    const schedule = parseScheduleFromMessage(userMessage);
+    if (schedule) {
+        const { delaySeconds, taskMessage, cleanMessage } = schedule;
+        aiChatHistory.push({ role: 'user', text: userMessage });
+        aiChatHistory.push({ role: 'assistant', text: `⏳ تم جدولة المهمة بعد ${delaySeconds} ثانية: ${cleanMessage}` });
+
+        const timeoutId = setTimeout(async () => {
+            aiScheduledTask = null;
+            aiScheduledEndTime = null;
+            syncState();
+            const response = await callGemini(cleanMessage);
+            if (response.type === 'action') {
+                await executeAIAction(response.action, response.params);
+            }
+        }, delaySeconds * 1000);
+
+        aiScheduledTask = {
+            taskMessage: cleanMessage,
+            timeoutId,
+            createdAt: Date.now(),
+            delaySeconds,
+            endTime: Date.now() + delaySeconds * 1000
+        };
+        aiScheduledEndTime = aiScheduledTask.endTime;
+        aiStatus = 'scheduled';
+        syncState();
+        startAITimerCountdown();
+        return { type: 'scheduled', message: `⏳ تم جدولة المهمة بعد ${delaySeconds} ثانية: ${cleanMessage}` };
+    }
 
     const response = await callGemini(userMessage);
     aiChatHistory.push({ role: 'user', text: userMessage });
@@ -398,6 +477,98 @@ const processAIMessage = async (userMessage) => {
     aiStatus = result.success ? 'idle' : 'error';
     syncState();
     return { type: 'action', ...result, action: response.action, params: response.params };
+};
+
+const parseScheduleFromMessage = (message) => {
+    const normalized = message.trim();
+    const patterns = [
+        /^بعد\s+(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i,
+        /^بعد\s+(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i,
+        /^(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i
+    ];
+    for (const pattern of patterns) {
+        const match = normalized.match(pattern);
+        if (match) {
+            const value = Number(match[1]);
+            const unit = match[2].trim();
+            const task = match[3].trim();
+            if (!value || !unit || !task) continue;
+            let seconds = 0;
+            if (/ثانية|ثواني/.test(unit)) seconds = value;
+            else if (/دقيقة|دقائق/.test(unit)) seconds = value * 60;
+            else if (/ساعة|ساعات/.test(unit)) seconds = value * 3600;
+            else continue;
+            if (seconds <= 0 || seconds > 86400) continue;
+            return { delaySeconds: seconds, taskMessage: task, cleanMessage: task };
+        }
+    }
+    return null;
+};
+
+const startAITimerCountdown = () => {
+    if (aiScheduledTimer) clearInterval(aiScheduledTimer);
+    aiScheduledTimer = setInterval(() => {
+        if (!aiScheduledTask) {
+            aiScheduledEndTime = null;
+            syncState();
+            return;
+        }
+        const remaining = Math.max(0, Math.ceil((aiScheduledTask.endTime - Date.now()) / 1000));
+        aiScheduledEndTime = aiScheduledTask.endTime;
+        syncState();
+        if (remaining <= 0) {
+            aiScheduledTask = null;
+            aiScheduledEndTime = null;
+            aiStatus = 'idle';
+            syncState();
+        }
+    }, 1000);
+};
+
+const parseScheduleFromMessage = (message) => {
+    const normalized = message.trim();
+    const patterns = [
+        /^بعد\s+(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i,
+        /^بعد\s+(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i,
+        /^(\d+)\s+(ثانية|ثواني|دقيقة|دقائق|ساعة|ساعات)\s+(.+)$/i
+    ];
+    for (const pattern of patterns) {
+        const match = normalized.match(pattern);
+        if (match) {
+            const value = Number(match[1]);
+            const unit = match[2].trim();
+            const task = match[3].trim();
+            if (!value || !unit || !task) continue;
+            let seconds = 0;
+            if (/ثانية|ثواني/.test(unit)) seconds = value;
+            else if (/دقيقة|دقائق/.test(unit)) seconds = value * 60;
+            else if (/ساعة|ساعات/.test(unit)) seconds = value * 3600;
+            else continue;
+            if (seconds <= 0 || seconds > 86400) continue;
+            return { delaySeconds: seconds, taskMessage: task, cleanMessage: task };
+        }
+    }
+    return null;
+};
+
+const startAITimerCountdown = () => {
+    if (aiScheduledTimer) clearInterval(aiScheduledTimer);
+    aiScheduledTimer = setInterval(() => {
+        if (!aiScheduledTask) {
+            aiScheduledEndTime = null;
+            syncState();
+            return;
+        }
+        const remaining = Math.max(0, Math.ceil((aiScheduledTask.endTime - Date.now()) / 1000));
+        aiScheduledEndTime = aiScheduledTask.endTime;
+        syncState();
+        if (remaining <= 0) {
+            aiScheduledTask = null;
+            aiScheduledEndTime = null;
+            aiStatus = 'idle';
+            syncState();
+        }
+    }, 1000);
 };
 
 const stopAIAutoMode = () => {
