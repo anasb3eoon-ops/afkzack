@@ -845,7 +845,12 @@ const runTask5 = async () => {
             if (task5Stopped || !taskStates.task5 || !isBotRunning || !isChatActive || !isTaskRunning) break;
 
             const game = config.task5Games[i];
-            const bet = randomBetween(betMin, betMax);
+            const step = 1000;
+            const minStep = Math.floor(betMin / step) * step;
+            const maxStep = Math.floor(betMax / step) * step;
+            const count = Math.max(1, Math.floor((maxStep - minStep) / step) + 1);
+            const randomIndex = Math.floor(Math.random() * count);
+            const bet = minStep + randomIndex * step;
             const message = `!كازينو ${game} ${bet}`;
             const sent = await sendChannelMessage(config.task5Channel, message, 'مهمة 5', firstMessage);
             firstMessage = false;

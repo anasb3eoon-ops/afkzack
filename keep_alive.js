@@ -1404,8 +1404,8 @@ app.get('/', (req, res) => {
                             <div class="timing-group">
                                 <label>المهمة 5 - كازينو: قيمة الرهان (من - إلى)</label>
                                 <div class="timing-fields">
-                                    <input type="number" name="task5BetMin" value="${c.task5BetMin || 5000}" min="1" step="1" placeholder="من">
-                                    <input type="number" name="task5BetMax" value="${c.task5BetMax || 10000}" min="1" step="1" placeholder="إلى">
+                                    <input type="number" name="task5BetMin" value="${c.task5BetMin || 5000}" min="1000" step="1" placeholder="من">
+                                    <input type="number" name="task5BetMax" value="${c.task5BetMax || 10000}" min="1000" step="1" placeholder="إلى">
                                 </div>
                             </div>
                             <div class="timing-group">
