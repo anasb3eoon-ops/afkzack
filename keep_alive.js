@@ -1502,6 +1502,15 @@ app.get('/', (req, res) => {
                         </div>
                     </div>
 
+                    <div class="card">
+                        <h3>🔄 إعادة الاتصال التلقائي</h3>
+                        <div class="task-row">
+                            <span class="task-name"><span class="task-number">⚡</span>الوضع الحالي</span>
+                            <span class="task-state" id="autoRejoinState">${botState.autoRejoinEnabled ? 'مفعل' : 'متوقف'}</span>
+                            <button type="button" class="btn ${botState.autoRejoinEnabled ? 'btn-danger' : 'btn-success'}" id="autoRejoinBtn" onclick="toggleAutoRejoin(this)">${botState.autoRejoinEnabled ? '⏹ إيقاف' : '▶ تشغيل'}</button>
+                        </div>
+                    </div>
+
                     <div class="card" id="voiceChannelCard" style="display:none;">
                         <h3>🎙️ إعدادات الروم <span id="voiceChannelName" style="color:var(--gold);"></span></h3>
                         <form id="voiceChannelForm" onsubmit="saveVoiceChannelSettings(event)">
@@ -1646,6 +1655,11 @@ app.get('/', (req, res) => {
                     fetch('/api/toggle-planb', { method: 'GET' });
                 }
 
+                function toggleAutoRejoin(btn) {
+                    pulseButton(btn);
+                    fetch('/api/toggle-auto-rejoin', { method: 'GET' });
+                }
+
                 function toggleAction(action, btn) {
                     pulseButton(btn);
                     fetch('/api/toggle/' + action, { method: 'GET' });
@@ -1675,6 +1689,14 @@ app.get('/', (req, res) => {
                         const voiceBtn = document.querySelector('[data-action="voice"]');
                         if (voiceBtn) {
                             voiceBtn.textContent = s.isVoiceActive ? '🔇 إيقاف صوت' : '🔊 تشغيل صوت';
+                        }
+                        const autoRejoinBtn = document.getElementById('autoRejoinBtn');
+                        const autoRejoinState = document.getElementById('autoRejoinState');
+                        if (autoRejoinBtn && autoRejoinState && s.autoRejoinEnabled !== undefined) {
+                            autoRejoinState.textContent = s.autoRejoinEnabled ? 'مفعل' : 'متوقف';
+                            autoRejoinBtn.textContent = s.autoRejoinEnabled ? '⏹ إيقاف' : '▶ تشغيل';
+                            autoRejoinBtn.classList.toggle('btn-danger', s.autoRejoinEnabled);
+                            autoRejoinBtn.classList.toggle('btn-success', !s.autoRejoinEnabled);
                         }
                     }).catch(() => {});
                 }
@@ -2631,6 +2653,13 @@ app.get('/api/toggle-task/:task', (req, res) => {
 app.get('/api/toggle-planb', (req, res) => {
     if (global.botEmitter) {
         global.botEmitter.emit('togglePlanB');
+    }
+    res.json({ success: true });
+});
+
+app.get('/api/toggle-auto-rejoin', (req, res) => {
+    if (global.botEmitter) {
+        global.botEmitter.emit('toggleAutoRejoin');
     }
     res.json({ success: true });
 });

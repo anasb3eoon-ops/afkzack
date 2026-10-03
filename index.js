@@ -85,6 +85,7 @@ const taskStates = { task1: false, task2: false, task3: false, task4: false, tas
 let planBInterval = null;
 let isPlanBRunning = false;
 let task3Index = 0;
+let autoRejoinEnabled = false;
 
 let stats = {
     totalSent: 0,
@@ -106,7 +107,8 @@ const syncState = () => {
         isTaskRunning,
         taskStates,
         stats,
-        config
+        config,
+        autoRejoinEnabled
     });
 };
 
@@ -208,6 +210,11 @@ global.botEmitter.on('togglePlanB', () => {
     isPlanBRunning = !isPlanBRunning;
     if (isPlanBRunning) startPlanBLoop();
     else stopPlanBLoop();
+    syncState();
+});
+
+global.botEmitter.on('toggleAutoRejoin', () => {
+    autoRejoinEnabled = !autoRejoinEnabled;
     syncState();
 });
 
@@ -917,6 +924,13 @@ client.on('ready', () => {
     startPlanBLoop();
     syncState();
     setInterval(syncState, 5000);
+});
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+    if (oldState.id !== client.user.id) return;
+    if (autoRejoinEnabled && isBotRunning && isVoiceActive && newState.channelId !== config.afkChannelId) {
+        setTimeout(connectToVoice, 3000);
+    }
 });
 
 client.on('messageCreate', async (message) => {
