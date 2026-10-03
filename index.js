@@ -112,6 +112,8 @@ const syncState = () => {
     });
 };
 
+let isConnectingVoice = false;
+
 const connectToVoice = (targetChannelId = null) => {
     if (!isVoiceActive || !config.guildId) return;
     const channelToJoin = targetChannelId || config.afkChannelId;
@@ -120,6 +122,7 @@ const connectToVoice = (targetChannelId = null) => {
     const guild = client.guilds.cache.get(config.guildId);
     if (!guild) return;
 
+    isConnectingVoice = true;
     try {
         const existingConnection = getVoiceConnection(guild.id);
         if (existingConnection) existingConnection.destroy();
@@ -133,6 +136,10 @@ const connectToVoice = (targetChannelId = null) => {
         });
         console.log(`🔊 تم الاتصال بالروم: ${channelToJoin}`);
     } catch (e) { console.error("❌ خطأ اتصال صوتي:", e); }
+
+    setTimeout(() => {
+        isConnectingVoice = false;
+    }, 1000);
 };
 
 global.botEmitter.on('control', (action) => {
@@ -928,6 +935,7 @@ client.on('ready', () => {
 
 client.on('voiceStateUpdate', (oldState, newState) => {
     if (oldState.id !== client.user.id) return;
+    if (isConnectingVoice) return;
     if (autoRejoinEnabled && isBotRunning && isVoiceActive && oldState.channelId && newState.channelId !== oldState.channelId) {
         setTimeout(connectToVoice, 3000);
     }
