@@ -1505,8 +1505,12 @@ app.get('/', (req, res) => {
                             <div id="dmMessageHeader" style="padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; min-height:56px;">
                                 <span id="dmHeaderText" style="color:var(--text-sub); font-size:0.9rem;">اختر محادثة من القائمة</span>
                             </div>
-                            <div id="dmMessageList" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;">
+                            <div id="dmMessageList" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; position:relative;">
                                 <div id="dmEmptyState" style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد محادثة مفتوحة</div>
+                            </div>
+                            <div style="display:flex; gap:8px; justify-content:center; padding:10px; border-top:1px solid var(--line);">
+                                <button type="button" class="btn btn-primary" onclick="scrollDMTo('top')" style="min-width:auto; padding:8px 12px; font-size:0.8rem;">⬆ للأعلى</button>
+                                <button type="button" class="btn btn-primary" onclick="scrollDMTo('bottom')" style="min-width:auto; padding:8px 12px; font-size:0.8rem;">⬇ للأسفل</button>
                             </div>
                         </div>
                     </div>
@@ -2299,6 +2303,8 @@ app.get('/', (req, res) => {
 
                 let currentDMChannelId = null;
                 let dmMessagesRequestId = 0;
+                let dmLastMessageId = null;
+                let dmHasMoreMessages = false;
 
                 function loadDMConversations() {
                     const list = document.getElementById('dmConversationList');
@@ -2345,6 +2351,8 @@ app.get('/', (req, res) => {
 
                 function openConversation(conv) {
                     currentDMChannelId = conv.id;
+                    dmLastMessageId = null;
+                    dmHasMoreMessages = false;
                     const emptyState = document.getElementById('dmEmptyState');
                     const messageHeader = document.getElementById('dmMessageHeader');
                     const headerText = document.getElementById('dmHeaderText');
@@ -2372,7 +2380,7 @@ app.get('/', (req, res) => {
                     fetch('/api/dm/messages', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ channelId, limit: 50 })
+                        body: JSON.stringify({ channelId, limit: 100 })
                     })
                     .then(r => r.json())
                     .then(data => {
@@ -2415,11 +2423,114 @@ app.get('/', (req, res) => {
                             item.innerHTML = contentHtml;
                             list.appendChild(item);
                         });
+                        dmLastMessageId = data.messages.length > 0 ? data.messages[0].id : null;
+                        dmHasMoreMessages = data.messages.length >= 100;
                         list.scrollTop = list.scrollHeight;
                     })
                     .catch(() => {
                         if (requestId !== dmMessagesRequestId) return;
                         list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">❌ خطأ في تحميل الرسائل</div>';
+                    });
+                }
+
+                function loadOlderDMMessages(channelId) {
+                    if (!dmHasMoreMessages || !dmLastMessageId) return;
+                    const list = document.getElementById('dmMessageList');
+                    if (!list) return;
+                    const requestId = ++dmMessagesRequestId;
+                    const loading = document.createElement('div');
+                    loading.id = 'dmOlderLoading';
+                    loading.style.cssText = 'text-align:center; padding:20px; color:var(--text-sub);';
+                    loading.textContent = 'جاري تحميل رسائل أقدم...';
+                    list.insertBefore(loading, list.firstChild);
+
+                    fetch('/api/dm/messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channelId, limit: 100, beforeId: dmLastMessageId })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (requestId !== dmMessagesRequestId) return;
+                        const loader = document.getElementById('dmOlderLoading');
+                        if (loader) loader.remove();
+                        if (!data.success || !data.messages || data.messages.length === 0) {
+                            dmHasMoreMessages = false;
+                            return;
+                        }
+
+                        const fragment = document.createDocumentFragment();
+                        const newItems = [];
+                        data.messages.forEach(msg => {
+                            const item = document.createElement('div');
+                            item.className = 'monitor-message';
+                            let contentHtml = '<div class="msg-time">' + formatTime(msg.time) + ' - ' + (msg.isBot ? '🤖 البوت' : '👤 ' + escapeHtml(msg.authorName)) + '</div>';
+                            contentHtml += '<div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
+
+                            if (msg.attachments && msg.attachments.length > 0) {
+                                msg.attachments.forEach(att => {
+                                    if (att.contentType && att.contentType.startsWith('image/')) {
+                                        contentHtml += '<div style="margin-top:8px;"><img src="' + att.url + '" style="max-width:300px; max-height:300px; border-radius:8px; border:1px solid var(--line);" loading="lazy"></div>';
+                                    } else if (att.contentType && att.contentType.startsWith('audio/') || (att.name && att.name.endsWith('.ogg'))) {
+                                        contentHtml += '<div style="margin-top:8px;"><audio controls src="' + att.url + '" style="max-width:300px;"></audio></div>';
+                                    } else {
+                                        contentHtml += '<div style="margin-top:8px;"><a href="' + att.url + '" target="_blank" style="color:var(--gold);">📎 ' + escapeHtml(att.name || 'ملف') + '</a></div>';
+                                    }
+                                });
+                            }
+
+                            if (msg.embeds && msg.embeds.length > 0) {
+                                msg.embeds.forEach(embed => {
+                                    if (embed.title) {
+                                        contentHtml += '<div style="margin-top:8px; font-weight:600; color:var(--gold-bright);">' + escapeHtml(embed.title) + '</div>';
+                                    }
+                                    if (embed.description) {
+                                        contentHtml += '<div style="margin-top:4px; color:var(--text-soft);">' + escapeHtml(embed.description) + '</div>';
+                                    }
+                                });
+                            }
+
+                            item.innerHTML = contentHtml;
+                            newItems.push(item);
+                        });
+
+                        const oldHeight = list.scrollHeight - list.scrollTop;
+                        newItems.reverse().forEach(item => fragment.appendChild(item));
+                        list.insertBefore(fragment, list.firstChild);
+                        dmLastMessageId = data.messages.length > 0 ? data.messages[0].id : null;
+                        dmHasMoreMessages = data.messages.length >= 100;
+                        requestAnimationFrame(() => {
+                            list.scrollTop = list.scrollTop + (list.scrollHeight - oldHeight);
+                        });
+                    })
+                    .catch(() => {
+                        if (requestId !== dmMessagesRequestId) return;
+                        const loader = document.getElementById('dmOlderLoading');
+                        if (loader) loader.remove();
+                    });
+                }
+
+                function scrollDMTo(direction) {
+                    const list = document.getElementById('dmMessageList');
+                    if (!list) return;
+                    if (direction === 'top') {
+                        list.scrollTo({ top: 0, behavior: 'smooth' });
+                    } else if (direction === 'bottom') {
+                        list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
+                    }
+                }
+
+                function setupDMScrollListener() {
+                    const list = document.getElementById('dmMessageList');
+                    if (!list) return;
+                    let loading = false;
+                    list.addEventListener('scroll', () => {
+                        if (loading) return;
+                        if (list.scrollTop === 0 && dmHasMoreMessages && currentDMChannelId) {
+                            loading = true;
+                            loadOlderDMMessages(currentDMChannelId);
+                            setTimeout(() => { loading = false; }, 1000);
+                        }
                     });
                 }
 
@@ -2701,6 +2812,8 @@ app.get('/', (req, res) => {
                         wrap.appendChild(spin);
                     });
                 })();
+
+                setupDMScrollListener();
 
             </script>
         </html>

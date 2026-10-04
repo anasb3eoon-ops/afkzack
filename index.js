@@ -648,7 +648,7 @@ global.botEmitter.on('getDMConversations', async () => {
     }
 });
 
-global.botEmitter.on('getDMMessages', async ({ channelId, limit = 50 }) => {
+global.botEmitter.on('getDMMessages', async ({ channelId, limit = 100, beforeId }) => {
     try {
         if (!client.user) {
             if (global.botEmitter) global.botEmitter.emit('dmMessagesResult', { success: false, messages: [], channelId });
@@ -661,8 +661,10 @@ global.botEmitter.on('getDMMessages', async ({ channelId, limit = 50 }) => {
             return;
         }
 
-        const parsedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
-        const messages = await channel.messages.fetch({ limit: parsedLimit });
+        const parsedLimit = Math.min(Math.max(Number(limit) || 100, 1), 100);
+        const fetchOptions = { limit: parsedLimit };
+        if (beforeId) fetchOptions.before = beforeId;
+        const messages = await channel.messages.fetch(fetchOptions);
         const msgs = Array.from(messages.values()).map(msg => ({
             id: msg.id,
             content: msg.content || '',
