@@ -1505,12 +1505,8 @@ app.get('/', (req, res) => {
                             <div id="dmMessageHeader" style="padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; min-height:56px;">
                                 <span id="dmHeaderText" style="color:var(--text-sub); font-size:0.9rem;">اختر محادثة من القائمة</span>
                             </div>
-                            <div id="dmMessageList" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; position:relative;">
+                            <div id="dmMessageList" style="height:520px; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;">
                                 <div id="dmEmptyState" style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد محادثة مفتوحة</div>
-                            </div>
-                            <div style="display:flex; gap:8px; justify-content:center; padding:10px; border-top:1px solid var(--line);">
-                                <button type="button" class="btn btn-primary" onclick="scrollDMTo('top')" style="min-width:auto; padding:8px 12px; font-size:0.8rem;">⬆ للأعلى</button>
-                                <button type="button" class="btn btn-primary" onclick="scrollDMTo('bottom')" style="min-width:auto; padding:8px 12px; font-size:0.8rem;">⬇ للأسفل</button>
                             </div>
                         </div>
                     </div>
@@ -2510,30 +2506,6 @@ app.get('/', (req, res) => {
                     });
                 }
 
-                function scrollDMTo(direction) {
-                    const list = document.getElementById('dmMessageList');
-                    if (!list) return;
-                    if (direction === 'top') {
-                        list.scrollTo({ top: 0, behavior: 'smooth' });
-                    } else if (direction === 'bottom') {
-                        list.scrollTo({ top: list.scrollHeight, behavior: 'smooth' });
-                    }
-                }
-
-                function setupDMScrollListener() {
-                    const list = document.getElementById('dmMessageList');
-                    if (!list) return;
-                    let loading = false;
-                    list.addEventListener('scroll', () => {
-                        if (loading) return;
-                        if (list.scrollTop === 0 && dmHasMoreMessages && currentDMChannelId) {
-                            loading = true;
-                            loadOlderDMMessages(currentDMChannelId);
-                            setTimeout(() => { loading = false; }, 1000);
-                        }
-                    });
-                }
-
                 function loadAuditLog() {
                     const count = document.getElementById('auditLogCount').value || 25;
                     const list = document.getElementById('auditLogList');
@@ -2812,8 +2784,6 @@ app.get('/', (req, res) => {
                         wrap.appendChild(spin);
                     });
                 })();
-
-                setupDMScrollListener();
 
             </script>
         </html>
