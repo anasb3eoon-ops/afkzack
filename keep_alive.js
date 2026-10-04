@@ -2345,19 +2345,27 @@ app.get('/', (req, res) => {
 
                 function openConversation(conv) {
                     currentDMChannelId = conv.id;
-                    document.getElementById('dmEmptyState').style.display = 'none';
-                    document.getElementById('dmMessageHeader').style.display = 'flex';
-                    document.getElementById('dmHeaderText').innerHTML =
-                        '<div style="width:32px; height:32px; border-radius:50%; background:var(--bg-elevated); display:grid; place-items:center; overflow:hidden; flex-shrink:0;">' +
-                            (conv.recipientAvatar ? '<img src="' + conv.recipientAvatar + '" style="width:100%; height:100%; object-fit:cover;">' : '<span>👤</span>') +
-                        '</div>' +
-                        '<span style="font-weight:600; color:var(--text-bright);">' + escapeHtml(conv.recipientName || conv.recipientTag || 'غير معروف') + '</span>';
+                    const emptyState = document.getElementById('dmEmptyState');
+                    const messageHeader = document.getElementById('dmMessageHeader');
+                    const headerText = document.getElementById('dmHeaderText');
+                    const list = document.getElementById('dmMessageList');
 
-                    loadDMMessages(conv.id);
+                    if (emptyState) emptyState.style.display = 'none';
+                    if (messageHeader) messageHeader.style.display = 'flex';
+                    if (headerText) {
+                        headerText.innerHTML =
+                            '<div style="width:32px; height:32px; border-radius:50%; background:var(--bg-elevated); display:grid; place-items:center; overflow:hidden; flex-shrink:0;">' +
+                                (conv.recipientAvatar ? '<img src="' + conv.recipientAvatar + '" style="width:100%; height:100%; object-fit:cover;">' : '<span>👤</span>') +
+                            '</div>' +
+                            '<span style="font-weight:600; color:var(--text-bright);">' + escapeHtml(conv.recipientName || conv.recipientTag || 'غير معروف') + '</span>';
+                    }
+
+                    if (list) loadDMMessages(conv.id);
                 }
 
                 function loadDMMessages(channelId) {
                     const list = document.getElementById('dmMessageList');
+                    if (!list) return;
                     const requestId = ++dmMessagesRequestId;
                     list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري تحميل الرسائل...</div>';
 
