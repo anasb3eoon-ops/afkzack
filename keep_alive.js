@@ -2506,6 +2506,20 @@ app.get('/', (req, res) => {
                     });
                 }
 
+                function setupDMScrollListener() {
+                    const list = document.getElementById('dmMessageList');
+                    if (!list) return;
+                    let loading = false;
+                    list.addEventListener('scroll', () => {
+                        if (loading) return;
+                        if (list.scrollTop === 0 && dmHasMoreMessages && currentDMChannelId) {
+                            loading = true;
+                            loadOlderDMMessages(currentDMChannelId);
+                            setTimeout(() => { loading = false; }, 1000);
+                        }
+                    });
+                }
+
                 function loadAuditLog() {
                     const count = document.getElementById('auditLogCount').value || 25;
                     const list = document.getElementById('auditLogList');
@@ -2784,6 +2798,8 @@ app.get('/', (req, res) => {
                         wrap.appendChild(spin);
                     });
                 })();
+
+                setupDMScrollListener();
 
             </script>
         </html>
