@@ -1482,18 +1482,11 @@ app.get('/', (req, res) => {
 
                 <div class="grid panel" data-panel="dm">
                     <div class="dm-container" style="display:flex; width:100%; min-height:620px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--bg-surface); grid-column:1 / -1;">
-                        <!-- Server list (far left) -->
-                        <div class="dm-server-list" style="width:60px; background:var(--bg-deep); border-left:1px solid var(--line); display:flex; flex-direction:column; align-items:center; padding:12px 0; gap:12px; overflow-y:auto; flex-shrink:0;">
-                            <div class="dm-server-icon active" title="الرسائل الخاصة" style="width:46px; height:46px; border-radius:50%; background:linear-gradient(135deg, var(--gold), var(--gold-dim)); display:grid; place-items:center; cursor:pointer; border:2px solid var(--gold); box-shadow:0 0 12px var(--gold-glow); transition:all 0.3s;">
-                                <span style="font-size:1.3rem;">💬</span>
-                            </div>
-                        </div>
-
                         <!-- Conversation list -->
-                        <div class="dm-conversation-list" style="width:260px; background:var(--bg-card); border-left:1px solid var(--line); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0;">
+                        <div class="dm-conversation-list" style="width:300px; background:var(--bg-card); border-left:1px solid var(--line); display:flex; flex-direction:column; overflow:hidden; flex-shrink:0;">
                             <div style="padding:16px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                                <h3 style="font-size:1rem; color:var(--text-bright); font-weight:700; margin:0;">الرسائل الخاصة</h3>
-                                <button type="button" class="btn btn-primary" onclick="loadDMConversations()" style="min-width:auto; padding:8px 12px; font-size:0.8rem;">🔄</button>
+                                <h3 style="font-size:1rem; color:var(--text-bright); font-weight:700; margin:0;">💬 المحادثات الخاصة</h3>
+                                <button type="button" class="btn btn-primary" onclick="loadDMConversations()" style="min-width:auto; padding:8px 12px; font-size:0.8rem;" title="تحديث القائمة">🔄</button>
                             </div>
                             <div id="dmConversationList" style="flex:1; overflow-y:auto; padding:8px;">
                                 <div style="text-align:center; padding:40px 20px; color:var(--text-sub);">اضغط على 🔄 لعرض المحادثات</div>
@@ -1502,11 +1495,24 @@ app.get('/', (req, res) => {
 
                         <!-- Message area -->
                         <div class="dm-message-area" style="flex:1; display:flex; flex-direction:column; background:var(--bg-surface); overflow:hidden; min-width:0;">
-                            <div id="dmMessageHeader" style="padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; min-height:56px;">
+                            <div id="dmMessageHeader" style="padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; min-height:56px; background:var(--bg-card);">
                                 <span id="dmHeaderText" style="color:var(--text-sub); font-size:0.9rem;">اختر محادثة من القائمة</span>
                             </div>
-                            <div id="dmMessageList" style="height:520px; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;">
-                                <div id="dmEmptyState" style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد محادثة مفتوحة</div>
+                            <div id="dmMessageList" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; background:var(--bg-surface);">
+                                <div id="dmEmptyState" style="text-align:center; padding:40px; color:var(--text-sub); margin:auto;">لا توجد محادثة مفتوحة</div>
+                            </div>
+                            <div id="dmReplyPreview" style="display:none; padding:10px 16px; border-top:1px solid var(--line); background:var(--bg-card);">
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                                    <div style="flex:1; min-width:0;">
+                                        <div style="font-size:0.75rem; color:var(--text-sub); margin-bottom:4px;">الرد على:</div>
+                                        <div id="dmReplyText" style="font-size:0.85rem; color:var(--text-bright); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                                    </div>
+                                    <button type="button" class="btn btn-danger" onclick="cancelDMReply()" style="min-width:auto; padding:6px 12px; font-size:0.8rem;">إلغاء</button>
+                                </div>
+                            </div>
+                            <div id="dmInputArea" style="padding:12px 16px; border-top:1px solid var(--line); background:var(--bg-card); display:none; gap:10px;">
+                                <input type="text" id="dmMessageInput" placeholder="اكتب رسالة..." style="flex:1; min-width:0;" onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendDMMessage();}">
+                                <button type="button" class="btn btn-primary" onclick="sendDMMessage()" style="min-width:auto; padding:8px 16px;">إرسال</button>
                             </div>
                         </div>
                     </div>
@@ -2301,9 +2307,13 @@ app.get('/', (req, res) => {
                 let dmMessagesRequestId = 0;
                 let dmLastMessageId = null;
                 let dmHasMoreMessages = false;
+                let dmReplyToMessageId = null;
+                let dmPollInterval = null;
+                let dmAutoScroll = true;
 
                 function loadDMConversations() {
                     const list = document.getElementById('dmConversationList');
+                    if (!list) return;
                     list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري التحميل...</div>';
 
                     fetch('/api/dm/conversations')
@@ -2319,7 +2329,8 @@ app.get('/', (req, res) => {
                                 const item = document.createElement('div');
                                 item.className = 'dm-conversation-item';
                                 item.dataset.channelId = conv.id;
-                                item.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--line); background:var(--bg-card); border-radius:6px; cursor:pointer; transition:all 0.3s; margin-bottom:6px;';
+                                const isActive = currentDMChannelId === conv.id;
+                                item.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid ' + (isActive ? 'var(--gold-dim)' : 'var(--line)') + '; background:' + (isActive ? 'rgba(214, 170, 72, 0.08)' : 'var(--bg-card)') + '; border-radius:6px; cursor:pointer; transition:all 0.3s; margin-bottom:6px;';
                                 item.innerHTML =
                                     '<div style="width:36px; height:36px; border-radius:50%; background:var(--bg-elevated); display:grid; place-items:center; flex-shrink:0; overflow:hidden;">' +
                                         (conv.recipientAvatar ? '<img src="' + conv.recipientAvatar + '" style="width:100%; height:100%; object-fit:cover;">' : '<span style="font-size:1rem;">👤</span>') +
@@ -2330,12 +2341,16 @@ app.get('/', (req, res) => {
                                     '</div>';
                                 item.addEventListener('click', () => openConversation(conv));
                                 item.addEventListener('mouseenter', () => {
-                                    item.style.borderColor = 'var(--gold-dim)';
-                                    item.style.background = 'var(--bg-card-hover)';
+                                    if (!isActive) {
+                                        item.style.borderColor = 'var(--gold-dim)';
+                                        item.style.background = 'var(--bg-card-hover)';
+                                    }
                                 });
                                 item.addEventListener('mouseleave', () => {
-                                    item.style.borderColor = 'var(--line)';
-                                    item.style.background = 'var(--bg-card)';
+                                    if (!isActive) {
+                                        item.style.borderColor = 'var(--line)';
+                                        item.style.background = 'var(--bg-card)';
+                                    }
                                 });
                                 list.appendChild(item);
                             });
@@ -2349,13 +2364,18 @@ app.get('/', (req, res) => {
                     currentDMChannelId = conv.id;
                     dmLastMessageId = null;
                     dmHasMoreMessages = false;
+                    dmReplyToMessageId = null;
+                    cancelDMReply();
+
                     const emptyState = document.getElementById('dmEmptyState');
                     const messageHeader = document.getElementById('dmMessageHeader');
                     const headerText = document.getElementById('dmHeaderText');
+                    const inputArea = document.getElementById('dmInputArea');
                     const list = document.getElementById('dmMessageList');
 
                     if (emptyState) emptyState.style.display = 'none';
                     if (messageHeader) messageHeader.style.display = 'flex';
+                    if (inputArea) inputArea.style.display = 'flex';
                     if (headerText) {
                         headerText.innerHTML =
                             '<div style="width:32px; height:32px; border-radius:50%; background:var(--bg-elevated); display:grid; place-items:center; overflow:hidden; flex-shrink:0;">' +
@@ -2365,158 +2385,214 @@ app.get('/', (req, res) => {
                     }
 
                     if (list) loadDMMessages(conv.id);
+                    loadDMConversations();
+                    startDMAutoRefresh();
                 }
 
-                function loadDMMessages(channelId) {
+                function loadDMMessages(channelId, beforeId = null) {
                     const list = document.getElementById('dmMessageList');
-                    if (!list) return;
+                    if (!list || !channelId) return;
                     const requestId = ++dmMessagesRequestId;
-                    list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري تحميل الرسائل...</div>';
+
+                    if (!beforeId) {
+                        list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري تحميل الرسائل...</div>';
+                    } else {
+                        const loading = document.createElement('div');
+                        loading.id = 'dmOlderLoading';
+                        loading.style.cssText = 'text-align:center; padding:20px; color:var(--text-sub);';
+                        loading.textContent = 'جاري تحميل رسائل أقدم...';
+                        list.insertBefore(loading, list.firstChild);
+                    }
 
                     fetch('/api/dm/messages', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ channelId, limit: 100 })
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (requestId !== dmMessagesRequestId) return;
-                        if (!data.success || !data.messages || data.messages.length === 0) {
-                            list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد رسائل</div>';
-                            return;
-                        }
-
-                        list.innerHTML = '';
-                        data.messages.forEach(msg => {
-                            const item = document.createElement('div');
-                            item.className = 'monitor-message';
-                            let contentHtml = '<div class="msg-time">' + formatTime(msg.time) + ' - ' + (msg.isBot ? '🤖 البوت' : '👤 ' + escapeHtml(msg.authorName)) + '</div>';
-                            contentHtml += '<div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
-
-                            if (msg.attachments && msg.attachments.length > 0) {
-                                msg.attachments.forEach(att => {
-                                    if (att.contentType && att.contentType.startsWith('image/')) {
-                                        contentHtml += '<div style="margin-top:8px;"><img src="' + att.url + '" style="max-width:300px; max-height:300px; border-radius:8px; border:1px solid var(--line);" loading="lazy"></div>';
-                                    } else if (att.contentType && att.contentType.startsWith('audio/') || (att.name && att.name.endsWith('.ogg'))) {
-                                        contentHtml += '<div style="margin-top:8px;"><audio controls src="' + att.url + '" style="max-width:300px;"></audio></div>';
-                                    } else {
-                                        contentHtml += '<div style="margin-top:8px;"><a href="' + att.url + '" target="_blank" style="color:var(--gold);">📎 ' + escapeHtml(att.name || 'ملف') + '</a></div>';
-                                    }
-                                });
-                            }
-
-                            if (msg.embeds && msg.embeds.length > 0) {
-                                msg.embeds.forEach(embed => {
-                                    if (embed.title) {
-                                        contentHtml += '<div style="margin-top:8px; font-weight:600; color:var(--gold-bright);">' + escapeHtml(embed.title) + '</div>';
-                                    }
-                                    if (embed.description) {
-                                        contentHtml += '<div style="margin-top:4px; color:var(--text-soft);">' + escapeHtml(embed.description) + '</div>';
-                                    }
-                                });
-                            }
-
-                            item.innerHTML = contentHtml;
-                            list.appendChild(item);
-                        });
-                        dmLastMessageId = data.messages.length > 0 ? data.messages[0].id : null;
-                        dmHasMoreMessages = data.messages.length >= 100;
-                        list.scrollTop = list.scrollHeight;
-                    })
-                    .catch(() => {
-                        if (requestId !== dmMessagesRequestId) return;
-                        list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">❌ خطأ في تحميل الرسائل</div>';
-                    });
-                }
-
-                function loadOlderDMMessages(channelId) {
-                    if (!dmHasMoreMessages || !dmLastMessageId) return;
-                    const list = document.getElementById('dmMessageList');
-                    if (!list) return;
-                    const requestId = ++dmMessagesRequestId;
-                    const loading = document.createElement('div');
-                    loading.id = 'dmOlderLoading';
-                    loading.style.cssText = 'text-align:center; padding:20px; color:var(--text-sub);';
-                    loading.textContent = 'جاري تحميل رسائل أقدم...';
-                    list.insertBefore(loading, list.firstChild);
-
-                    fetch('/api/dm/messages', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ channelId, limit: 100, beforeId: dmLastMessageId })
+                        body: JSON.stringify({ channelId, limit: 100, beforeId })
                     })
                     .then(r => r.json())
                     .then(data => {
                         if (requestId !== dmMessagesRequestId) return;
                         const loader = document.getElementById('dmOlderLoading');
                         if (loader) loader.remove();
+
                         if (!data.success || !data.messages || data.messages.length === 0) {
+                            if (!beforeId) {
+                                list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد رسائل</div>';
+                            }
                             dmHasMoreMessages = false;
                             return;
                         }
 
-                        const fragment = document.createDocumentFragment();
-                        const newItems = [];
-                        data.messages.forEach(msg => {
-                            const item = document.createElement('div');
-                            item.className = 'monitor-message';
-                            let contentHtml = '<div class="msg-time">' + formatTime(msg.time) + ' - ' + (msg.isBot ? '🤖 البوت' : '👤 ' + escapeHtml(msg.authorName)) + '</div>';
-                            contentHtml += '<div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
-
-                            if (msg.attachments && msg.attachments.length > 0) {
-                                msg.attachments.forEach(att => {
-                                    if (att.contentType && att.contentType.startsWith('image/')) {
-                                        contentHtml += '<div style="margin-top:8px;"><img src="' + att.url + '" style="max-width:300px; max-height:300px; border-radius:8px; border:1px solid var(--line);" loading="lazy"></div>';
-                                    } else if (att.contentType && att.contentType.startsWith('audio/') || (att.name && att.name.endsWith('.ogg'))) {
-                                        contentHtml += '<div style="margin-top:8px;"><audio controls src="' + att.url + '" style="max-width:300px;"></audio></div>';
-                                    } else {
-                                        contentHtml += '<div style="margin-top:8px;"><a href="' + att.url + '" target="_blank" style="color:var(--gold);">📎 ' + escapeHtml(att.name || 'ملف') + '</a></div>';
-                                    }
-                                });
-                            }
-
-                            if (msg.embeds && msg.embeds.length > 0) {
-                                msg.embeds.forEach(embed => {
-                                    if (embed.title) {
-                                        contentHtml += '<div style="margin-top:8px; font-weight:600; color:var(--gold-bright);">' + escapeHtml(embed.title) + '</div>';
-                                    }
-                                    if (embed.description) {
-                                        contentHtml += '<div style="margin-top:4px; color:var(--text-soft);">' + escapeHtml(embed.description) + '</div>';
-                                    }
-                                });
-                            }
-
-                            item.innerHTML = contentHtml;
-                            newItems.push(item);
-                        });
-
-                        const oldHeight = list.scrollHeight - list.scrollTop;
-                        newItems.reverse().forEach(item => fragment.appendChild(item));
-                        list.insertBefore(fragment, list.firstChild);
-                        dmLastMessageId = data.messages.length > 0 ? data.messages[0].id : null;
+                        dmLastMessageId = data.messages[0].id;
                         dmHasMoreMessages = data.messages.length >= 100;
-                        requestAnimationFrame(() => {
-                            list.scrollTop = list.scrollTop + (list.scrollHeight - oldHeight);
-                        });
+
+                        if (beforeId) {
+                            const existingIds = new Set(Array.from(list.querySelectorAll('.monitor-message')).map(el => el.dataset.msgId).filter(Boolean));
+                            const fragment = document.createDocumentFragment();
+                            const newItems = [];
+
+                            data.messages.forEach(msg => {
+                                if (existingIds.has(msg.id)) return;
+                                const item = createDMMessageElement(msg);
+                                newItems.push(item);
+                            });
+
+                            if (newItems.length === 0) {
+                                dmHasMoreMessages = false;
+                                return;
+                            }
+
+                            const oldHeight = list.scrollHeight - list.scrollTop;
+                            newItems.reverse().forEach(item => fragment.appendChild(item));
+                            list.insertBefore(fragment, list.firstChild);
+                            requestAnimationFrame(() => {
+                                list.scrollTop = list.scrollTop + (list.scrollHeight - oldHeight);
+                            });
+                        } else {
+                            list.innerHTML = '';
+                            data.messages.forEach(msg => {
+                                list.appendChild(createDMMessageElement(msg));
+                            });
+                            dmAutoScroll = true;
+                            list.scrollTop = list.scrollHeight;
+                        }
                     })
                     .catch(() => {
                         if (requestId !== dmMessagesRequestId) return;
                         const loader = document.getElementById('dmOlderLoading');
                         if (loader) loader.remove();
+                        if (!beforeId) {
+                            list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">❌ خطأ في تحميل الرسائل</div>';
+                        }
                     });
+                }
+
+                function createDMMessageElement(msg) {
+                    const item = document.createElement('div');
+                    item.className = 'monitor-message';
+                    item.dataset.msgId = msg.id;
+                    item.style.cssText = 'cursor:pointer; transition:all 0.3s;';
+
+                    let contentHtml = '<div class="msg-time">' + formatTime(msg.time) + ' - ' + (msg.isBot ? '🤖 البوت' : '👤 ' + escapeHtml(msg.authorName)) + '</div>';
+                    contentHtml += '<div class="msg-content">' + escapeHtml(msg.content || '(بدون محتوى)') + '</div>';
+
+                    if (msg.attachments && msg.attachments.length > 0) {
+                        msg.attachments.forEach(att => {
+                            if (att.contentType && att.contentType.startsWith('image/')) {
+                                contentHtml += '<div style="margin-top:8px;"><img src="' + att.url + '" style="max-width:300px; max-height:300px; border-radius:8px; border:1px solid var(--line);" loading="lazy"></div>';
+                            } else if (att.contentType && att.contentType.startsWith('audio/') || (att.name && att.name.endsWith('.ogg'))) {
+                                contentHtml += '<div style="margin-top:8px;"><audio controls src="' + att.url + '" style="max-width:300px;"></audio></div>';
+                            } else {
+                                contentHtml += '<div style="margin-top:8px;"><a href="' + att.url + '" target="_blank" style="color:var(--gold);">📎 ' + escapeHtml(att.name || 'ملف') + '</a></div>';
+                            }
+                        });
+                    }
+
+                    if (msg.embeds && msg.embeds.length > 0) {
+                        msg.embeds.forEach(embed => {
+                            if (embed.title) {
+                                contentHtml += '<div style="margin-top:8px; font-weight:600; color:var(--gold-bright);">' + escapeHtml(embed.title) + '</div>';
+                            }
+                            if (embed.description) {
+                                contentHtml += '<div style="margin-top:4px; color:var(--text-soft);">' + escapeHtml(embed.description) + '</div>';
+                            }
+                        });
+                    }
+
+                    item.innerHTML = contentHtml;
+                    item.addEventListener('click', () => setDMReply(msg));
+                    return item;
+                }
+
+                function setDMReply(msg) {
+                    dmReplyToMessageId = msg.id;
+                    const preview = document.getElementById('dmReplyPreview');
+                    const replyText = document.getElementById('dmReplyText');
+                    if (preview && replyText) {
+                        preview.style.display = 'block';
+                        replyText.textContent = msg.content || '(بدون محتوى)';
+                    }
+                    document.getElementById('dmMessageInput')?.focus();
+                }
+
+                function cancelDMReply() {
+                    dmReplyToMessageId = null;
+                    const preview = document.getElementById('dmReplyPreview');
+                    if (preview) preview.style.display = 'none';
+                }
+
+                function sendDMMessage() {
+                    const input = document.getElementById('dmMessageInput');
+                    if (!input || !currentDMChannelId) return;
+                    const text = input.value.trim();
+                    if (!text) return;
+
+                    input.value = '';
+                    fetch('/api/dm/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channelId: currentDMChannelId, content: text, replyTo: dmReplyToMessageId })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            cancelDMReply();
+                            loadDMMessages(currentDMChannelId);
+                        } else {
+                            alert(data.message || '❌ خطأ في إرسال الرسالة');
+                        }
+                    })
+                    .catch(() => {
+                        alert('❌ خطأ في إرسال الرسالة');
+                    });
+                }
+
+                function startDMAutoRefresh() {
+                    if (dmPollInterval) clearInterval(dmPollInterval);
+                    dmPollInterval = setInterval(() => {
+                        if (!currentDMChannelId) return;
+                        const list = document.getElementById('dmMessageList');
+                        if (!list) return;
+
+                        fetch('/api/dm/messages', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ channelId: currentDMChannelId, limit: 10 })
+                        })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.success || !data.messages || data.messages.length === 0) return;
+                            const existingIds = new Set(Array.from(list.querySelectorAll('.monitor-message')).map(el => el.dataset.msgId).filter(Boolean));
+                            const newMessages = data.messages.filter(msg => !existingIds.has(msg.id));
+
+                            if (newMessages.length > 0 && dmAutoScroll) {
+                                newMessages.forEach(msg => {
+                                    list.appendChild(createDMMessageElement(msg));
+                                });
+                                list.scrollTop = list.scrollHeight;
+                            }
+                        })
+                        .catch(() => {});
+                    }, 3000);
                 }
 
                 function setupDMScrollListener() {
                     const list = document.getElementById('dmMessageList');
                     if (!list) return;
                     let loading = false;
+
                     list.addEventListener('scroll', () => {
                         if (loading) return;
                         if (list.scrollTop === 0 && dmHasMoreMessages && currentDMChannelId) {
                             loading = true;
-                            loadOlderDMMessages(currentDMChannelId);
+                            dmAutoScroll = false;
+                            const lastId = list.querySelector('.monitor-message:first-child')?.dataset.msgId || null;
+                            loadDMMessages(currentDMChannelId, lastId);
                             setTimeout(() => { loading = false; }, 1000);
                         }
+
+                        const isAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 100;
+                        dmAutoScroll = isAtBottom;
                     });
                 }
 
@@ -2929,6 +3005,60 @@ app.get('/api/dm/result', (req, res) => {
     });
 });
 
+app.post('/api/dm/send', express.json(), async (req, res) => {
+    if (!client.user) {
+        return res.json({ success: false, message: '⚠️ البوت غير متصل' });
+    }
+    const { channelId, content, replyTo } = req.body || {};
+    if (!channelId || !content) {
+        return res.json({ success: false, message: '⚠️ بيانات غير صحيحة' });
+    }
+
+    try {
+        const channel = client.channels.cache.get(channelId);
+        if (!channel || channel.type !== 'DM') {
+            return res.json({ success: false, message: '⚠️ القناة غير موجودة أو ليست محادثة خاصة' });
+        }
+
+        let sentMessage = null;
+        if (replyTo) {
+            const replyMsg = await channel.messages.fetch(replyTo).catch(() => null);
+            if (replyMsg) {
+                sentMessage = await replyMsg.reply(content);
+            }
+        }
+        if (!sentMessage) {
+            sentMessage = await channel.send(content);
+        }
+
+        res.json({ success: true, message: '✅ تم إرسال الرسالة', messageId: sentMessage.id });
+    } catch (e) {
+        res.json({ success: false, message: '❌ خطأ: ' + e.message });
+    }
+});
+
+app.post('/api/dm/messages', express.json(), async (req, res) => {
+    if (!global.botEmitter) {
+        return res.json({ success: false, messages: [], channelId: null });
+    }
+
+    const { channelId, limit = 50, beforeId } = req.body || {};
+    if (!channelId) {
+        return res.json({ success: false, messages: [], channelId: null });
+    }
+
+    const result = await new Promise((resolve) => {
+        const onDone = (data) => {
+            global.botEmitter.removeListener('dmMessagesResult', onDone);
+            resolve(data);
+        };
+        global.botEmitter.on('dmMessagesResult', onDone);
+        global.botEmitter.emit('getDMMessages', { channelId, limit: Math.min(limit, 100), beforeId });
+    });
+
+    res.json(result || { success: false, messages: [], channelId });
+});
+
 app.get('/api/dm/conversations', async (req, res) => {
     if (!global.botEmitter) {
         return res.json({ success: false, conversations: [] });
@@ -2944,28 +3074,6 @@ app.get('/api/dm/conversations', async (req, res) => {
     });
 
     res.json(result || { success: false, conversations: [] });
-});
-
-app.post('/api/dm/messages', express.json(), async (req, res) => {
-    if (!global.botEmitter) {
-        return res.json({ success: false, messages: [], channelId: null });
-    }
-
-    const { channelId, limit = 50 } = req.body || {};
-    if (!channelId) {
-        return res.json({ success: false, messages: [], channelId: null });
-    }
-
-    const result = await new Promise((resolve) => {
-        const onDone = (data) => {
-            global.botEmitter.removeListener('dmMessagesResult', onDone);
-            resolve(data);
-        };
-        global.botEmitter.on('dmMessagesResult', onDone);
-        global.botEmitter.emit('getDMMessages', { channelId, limit });
-    });
-
-    res.json(result || { success: false, messages: [], channelId });
 });
 
 app.get('/api/roles', async (req, res) => {
