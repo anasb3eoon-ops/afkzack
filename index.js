@@ -45,7 +45,7 @@ const defaultConfig = {
     planBRepeat: 2.5,
 
     task5Channel: "1505231951731097610",
-    task5Games: ["بلاكجاك", "روليت", "عملة", "عمل", "سلوت", "فامبيرز"],
+    task5Games: ["بلاكجاك", "روليت", "عملة", "عمل", "سلوت"],
     task5BetMin: 5000,
     task5BetMax: 10000,
     task5GapMin: 10,

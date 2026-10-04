@@ -2298,6 +2298,7 @@ app.get('/', (req, res) => {
                 }
 
                 let currentDMChannelId = null;
+                let dmMessagesRequestId = 0;
 
                 function loadDMConversations() {
                     const list = document.getElementById('dmConversationList');
@@ -2357,6 +2358,7 @@ app.get('/', (req, res) => {
 
                 function loadDMMessages(channelId) {
                     const list = document.getElementById('dmMessageList');
+                    const requestId = ++dmMessagesRequestId;
                     list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">جاري تحميل الرسائل...</div>';
 
                     fetch('/api/dm/messages', {
@@ -2366,6 +2368,7 @@ app.get('/', (req, res) => {
                     })
                     .then(r => r.json())
                     .then(data => {
+                        if (requestId !== dmMessagesRequestId) return;
                         if (!data.success || !data.messages || data.messages.length === 0) {
                             list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-sub);">لا توجد رسائل</div>';
                             return;
@@ -2407,6 +2410,7 @@ app.get('/', (req, res) => {
                         list.scrollTop = list.scrollHeight;
                     })
                     .catch(() => {
+                        if (requestId !== dmMessagesRequestId) return;
                         list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--danger);">❌ خطأ في تحميل الرسائل</div>';
                     });
                 }
